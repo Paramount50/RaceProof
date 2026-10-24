@@ -4,12 +4,13 @@ import {
   Code2, Database, GitCompare, Loader2, LockKeyhole, Play, ShieldCheck,
   TerminalSquare, X, Gauge,
 } from 'lucide-react'
-import type { InvariantResult, ModelStatus, RunEvent, RunReport, Target } from './types'
+import type { InvariantResult, ModelStatus, ReviewDecision, ReviewState, RunEvent, RunReport, Target } from './types'
 import { normalizeUsage } from './usage'
 import { deriveStageStates } from './progress'
 import { describeRepairAttempt } from './repairView'
 import { isTerminalStatus, normalizeStatus, statusLabel, statusTone } from './status'
 import { DatabaseBehaviorComparison, LangSmithPanel, LockWaitPanel, SchedulePlayer, StageDurationPanel } from './EvidencePanels'
+import { ReviewPanel } from './ReviewPanel'
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const stages = ['load_target', 'inspect', 'investigate', 'execute_experiment', 'observe', 'repair', 'apply_patch', 'verify', 'finalize']
@@ -32,6 +33,12 @@ function App() {
   const [targets, setTargets] = useState<Target[]>([])
   const [targetId, setTargetId] = useState('')
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null)
+  const [reviewState, setReviewState] = useState<ReviewState | null>(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [reviewer, setReviewer] = useState('human-reviewer')
+  const [reviewComment, setReviewComment] = useState('')
 
   useEffect(() => {
     fetch(`${API}/api/health`).then(r => r.json()).then(data => setHealth(data.postgresql)).catch(() => setHealth(false))
@@ -41,8 +48,47 @@ function App() {
     }).catch(() => setError('Could not load target applications.'))
   }, [])
 
+  async function loadReview(id: string) {
+    setReviewLoading(true); setReviewError(null)
+    try {
+      const response = await fetch(`${API}/api/runs/${id}/review`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail ?? 'Could not load review state.')
+      setReviewState(data as ReviewState)
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  async function submitReview(decision: ReviewDecision) {
+    if (!runId || !reviewState?.candidate_diff_sha256) return
+    const confirmed = window.confirm(`Record an immutable ${decision.toLowerCase()} decision for this candidate?`)
+    if (!confirmed) return
+    setReviewSubmitting(true); setReviewError(null)
+    try {
+      const response = await fetch(`${API}/api/runs/${runId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          reviewer,
+          comment: reviewComment,
+          expected_report_sha256: reviewState.report_sha256,
+          expected_candidate_diff_sha256: reviewState.candidate_diff_sha256,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail ?? 'Could not record review decision.')
+      await loadReview(runId)
+    } catch (reviewFailure) {
+      setReviewError(reviewFailure instanceof Error ? reviewFailure.message : 'Could not record review decision.')
+    } finally {
+      setReviewSubmitting(false)
+    }
+  }
+
   async function startRun() {
-    setError(null); setEvents([]); setReport(null); setStatus('QUEUED')
+    setError(null); setEvents([]); setReport(null); setReviewState(null); setReviewError(null); setReviewComment(''); setStatus('QUEUED')
     const response = await fetch(`${API}/api/runs`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_id: targetId }),
@@ -64,6 +110,7 @@ function App() {
       const response = await fetch(`${API}/api/runs/${runId}`)
       const data = await response.json()
       setStatus(normalizeStatus(data.status)); setReport(data.report); setError(data.error)
+      if (data.report) loadReview(runId).catch(reviewFailure => setReviewError(reviewFailure instanceof Error ? reviewFailure.message : 'Could not load review state.'))
     })
     source.onerror = () => { source.close(); setError('Event stream disconnected.') }
     return () => source.close()
@@ -223,6 +270,10 @@ function App() {
     <section className="panel diff-panel">
       <div className="panel-head"><div><span className="kicker">REVIEWABLE BEFORE / AFTER DIFF</span><h2>Model-generated candidate changes</h2></div><Code2 size={20}/></div>
       <pre>{repairView.diff || report?.final_diff || 'No executable candidate diff was generated. Description-only repairs are rejected.'}</pre>
+    </section>
+
+    <section className="review-section">
+      <ReviewPanel state={reviewState} loading={reviewLoading} submitting={reviewSubmitting} error={reviewError} reviewer={reviewer} comment={reviewComment} onReviewerChange={setReviewer} onCommentChange={setReviewComment} onDecision={decision => { void submitReview(decision) }}/>
     </section>
 
     <footer><span>RaceProof experimental prototype</span><span>Finite tests establish observed evidence, not formal race freedom.</span>{runId && <span>RUN {runId}</span>}</footer>

@@ -25,6 +25,29 @@ export type Target = {
   invariant: { name: string; description: string; approved: true }
 }
 
+export type ReviewDecision = 'APPROVED' | 'REJECTED'
+
+export type ReviewRecord = {
+  schema_version: number
+  run_id: string
+  decision: ReviewDecision
+  reviewer: string
+  comment: string | null
+  decided_at: string
+  report_sha256: string
+  candidate_diff_sha256: string
+}
+
+export type ReviewState = {
+  run_id: string
+  deterministic_status: string
+  eligible: boolean
+  reason: string
+  report_sha256: string
+  candidate_diff_sha256: string | null
+  review: ReviewRecord | null
+}
+
 export type ScheduleResult = {
   schedule_name: string
   status: string

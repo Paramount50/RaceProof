@@ -192,6 +192,10 @@ The dashboard fetches generic target metadata and sends only a selected `target_
 - `GET /api/runs/{run_id}`: status, events, and report.
 - `GET /api/runs/{run_id}/events`: Server-Sent Events stream.
 - `GET /api/runs/{run_id}/report`: completed structured evidence.
+- `GET /api/runs/{run_id}/review`: review eligibility, immutable decision, and report and candidate SHA-256 values.
+- `POST /api/runs/{run_id}/review`: record one approval or rejection for an unchanged persisted `VERIFIED_CANDIDATE`.
+
+Human review is separate from deterministic verification. An approval or rejection never changes `RunReport.status`, verification gates, candidate files, Git state, or a production system. The API accepts one immutable decision only after the exact persisted report and non-empty candidate diff match the submitted SHA-256 values and every required deterministic gate passed.
 
 ## Verification and tests
 
@@ -210,6 +214,7 @@ Runs write to the engine artifact root:
 
 - `artifacts/runs/<run_id>/state-history.jsonl`
 - `artifacts/runs/<run_id>/report.json`
+- `artifacts/runs/<run_id>/review.json` only after an immutable human decision
 - `artifacts/runs/<run_id>/candidate.diff` only for a verified candidate
 - `artifacts/runs/<run_id>/attempts/attempt-N/model-proposal.json`
 - `artifacts/runs/<run_id>/attempts/attempt-N/generated.diff`

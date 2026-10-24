@@ -12,6 +12,17 @@ from sqlalchemy import text
 from raceproof.config import get_settings
 from raceproof.database import create_database_engine
 from raceproof.report_store import InvalidReportArtifact, InvalidRunId, ReportStore
+from raceproof.review_store import (
+    InvalidReviewArtifact,
+    ReviewAlreadyExists,
+    ReviewHashMismatch,
+    ReviewIneligible,
+    ReviewReportNotFound,
+    ReviewState,
+    ReviewStorageError,
+    ReviewStore,
+    ReviewSubmission,
+)
 from raceproof.runtime import model_status
 from raceproof.security import redact_sensitive
 from raceproof.service import RunService
@@ -40,6 +51,24 @@ def _persisted_report(run_id: str):
         return ReportStore(repository_root, get_settings().artifact_dir).load(run_id)
     except (InvalidRunId, InvalidReportArtifact):
         return None
+
+
+def _review_store() -> ReviewStore:
+    return ReviewStore(repository_root, get_settings().artifact_dir)
+
+
+def _raise_review_http_error(exc: Exception) -> None:
+    if isinstance(exc, InvalidRunId):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if isinstance(exc, ReviewReportNotFound):
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if isinstance(exc, (InvalidReportArtifact, InvalidReviewArtifact)):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, (ReviewAlreadyExists, ReviewHashMismatch, ReviewIneligible)):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ReviewStorageError):
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    raise exc
 
 
 @app.get("/api/health")
@@ -155,3 +184,21 @@ def get_report(run_id: str):
     if active.report is None:
         raise HTTPException(status_code=409, detail="report is not ready")
     return active.report
+
+
+@app.get("/api/runs/{run_id}/review", response_model=ReviewState)
+def get_review(run_id: str) -> ReviewState:
+    try:
+        return _review_store().state(run_id)
+    except Exception as exc:  # noqa: BLE001 - translated into bounded API errors
+        _raise_review_http_error(exc)
+        raise AssertionError("unreachable")
+
+
+@app.post("/api/runs/{run_id}/review", status_code=201)
+def create_review(run_id: str, submission: ReviewSubmission):
+    try:
+        return _review_store().create(run_id, submission)
+    except Exception as exc:  # noqa: BLE001 - translated into bounded API errors
+        _raise_review_http_error(exc)
+        raise AssertionError("unreachable")

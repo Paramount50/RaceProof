@@ -34,15 +34,20 @@ class ReportStore:
         return path
 
     def load(self, run_id: str) -> RunReport | None:
+        loaded = self.load_with_bytes(run_id)
+        return loaded[0] if loaded is not None else None
+
+    def load_with_bytes(self, run_id: str) -> tuple[RunReport, bytes] | None:
         path = self.report_path(run_id)
         if not path.is_file():
             return None
         if path.stat().st_size > MAX_REPORT_BYTES:
             raise InvalidReportArtifact("report artifact exceeds the configured size limit")
         try:
-            report = RunReport.model_validate_json(path.read_text(encoding="utf-8"))
+            raw_report = path.read_bytes()
+            report = RunReport.model_validate_json(raw_report)
         except (OSError, UnicodeError, ValidationError) as exc:
             raise InvalidReportArtifact("report artifact failed validation") from exc
         if report.run_id != run_id:
             raise InvalidReportArtifact("report artifact run ID does not match its directory")
-        return report
+        return report, raw_report

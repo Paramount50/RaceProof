@@ -31,6 +31,24 @@ class FinalStatus(StrEnum):
     INTERRUPTED = "INTERRUPTED"
 
 
+REQUIRED_VERIFICATION_GATES = frozenset(
+    {
+        "candidate_source_executed",
+        "candidate_operation_invoked",
+        "replay_isolation",
+        "schedule_semantically_valid",
+        "all_replays_completed",
+        "business_invariant",
+        "allowed_outcomes",
+        "regression_tests",
+        "no_transaction_errors",
+        "benchmark_schedules_completed",
+        "no_deadlocks",
+        "performance_within_configured_limit",
+    }
+)
+
+
 class EventKind(StrEnum):
     AGENT = "agent"
     STAGE = "stage"
@@ -424,6 +442,8 @@ class RunReport(BaseModel):
             and attempt.patch_validation.accepted
             and attempt.verification is not None
             and attempt.verification.passed
+            and REQUIRED_VERIFICATION_GATES.issubset(attempt.verification.gates)
+            and all(attempt.verification.gates[name] for name in REQUIRED_VERIFICATION_GATES)
         ]
         if not self.final_diff or not verified_attempts:
             raise ValueError(
