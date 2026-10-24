@@ -1,0 +1,81 @@
+{
+  "config_version": 1,
+  "id": "inventory_oversell",
+  "name": "Inventory oversell",
+  "description": "Two purchases both observe one unit and both commit.",
+  "repository": ".",
+  "python_paths": ["src"],
+  "adapter_path": "raceproof_adapter.py",
+  "adapter_factory": "create_adapter",
+  "database_url_env": "RACEPROOF_DATABASE_URL",
+  "operation": {
+    "display_name": "purchase_inventory",
+    "callable": "inventory_app.operations:purchase_inventory",
+    "source_files": ["src/inventory_app/operations.py", "src/inventory_app/models.py"],
+    "editable_paths": ["src/inventory_app/operations.py"],
+    "protected_paths": ["raceproof.json", "raceproof_adapter.py", "tests"]
+  },
+  "actors": [
+    {"id": "A", "input": {"product_id": 1}},
+    {"id": "B", "input": {"product_id": 1}}
+  ],
+  "invariant": {
+    "name": "inventory_conservation",
+    "description": "Initial stock equals final stock plus committed orders.",
+    "approved": true
+  },
+  "reproduction_schedule": {
+    "name": "stale_read_interleaving",
+    "description": "Both actors read stock before either writes.",
+    "actions": [
+      {"kind": "wait_checkpoint", "actors": ["A", "B"], "checkpoint": "after_read"},
+      {"kind": "release", "actors": ["A"], "checkpoint": "after_read"},
+      {"kind": "wait_completion", "actors": ["A"]},
+      {"kind": "release", "actors": ["B"], "checkpoint": "after_read"},
+      {"kind": "wait_completion", "actors": ["B"]}
+    ]
+  },
+  "investigation_schedules": [
+    {
+      "name": "serial_control",
+      "description": "Run A to completion before B as a negative control.",
+      "actions": [
+        {"kind": "wait_checkpoint", "actors": ["A", "B"], "checkpoint": "before_operation"},
+        {"kind": "release", "actors": ["A"], "checkpoint": "before_operation"},
+        {"kind": "wait_completion", "actors": ["A"]},
+        {"kind": "release", "actors": ["B"], "checkpoint": "before_operation"},
+        {"kind": "wait_completion", "actors": ["B"]}
+      ]
+    }
+  ],
+  "verification_schedules": [
+    {
+      "name": "exact_replay",
+      "description": "Replay the original semantic checkpoint schedule.",
+      "actions": [
+        {"kind": "wait_checkpoint", "actors": ["A", "B"], "checkpoint": "after_read"},
+        {"kind": "release", "actors": ["A"], "checkpoint": "after_read"},
+        {"kind": "wait_completion", "actors": ["A"]},
+        {"kind": "release", "actors": ["B"], "checkpoint": "after_read"},
+        {"kind": "wait_completion", "actors": ["B"]}
+      ]
+    },
+    {
+      "name": "adapted_parallel_start",
+      "description": "Start both complete operations concurrently after repair.",
+      "actions": [
+        {"kind": "wait_checkpoint", "actors": ["A", "B"], "checkpoint": "before_operation"},
+        {"kind": "release_all", "actors": ["A", "B"]},
+        {"kind": "wait_completion", "actors": ["A", "B"]}
+      ]
+    }
+  ],
+  "verification": {
+    "replay_count": 3,
+    "allowed_outcomes": {"accepted": 1, "rejected": 1},
+    "benchmark_runs": 10,
+    "performance_regression_limit": 2.5,
+    "regression": {"argv": ["python", "-m", "pytest", "-q", "tests"], "cwd": ".", "timeout_seconds": 60}
+  },
+  "limitations": ["Models one product and one-unit purchases.", "The approved invariant is application-owned."]
+}
