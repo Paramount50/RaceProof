@@ -11,7 +11,7 @@ from raceproof.database import create_database_engine
 def database_url() -> str:
     return os.environ.get(
         "RACEPROOF_DATABASE_URL",
-        "postgresql+psycopg://raceproof:raceproof_dev_only@localhost:55432/raceproof",
+        "postgresql+psycopg://raceproof@127.0.0.1:55432/raceproof",
     )
 
 

@@ -16,9 +16,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = (
-        "postgresql+psycopg://raceproof:raceproof_dev_only@localhost:55432/raceproof"
-    )
+    database_url: str = "postgresql+psycopg://raceproof@127.0.0.1:55432/raceproof"
     investigation_model: str = "gemini-3.5-flash-lite"
     repair_model: str = "gemini-3.1-flash-lite"
     fallback_model: str = "gemini-3.8-flash"
