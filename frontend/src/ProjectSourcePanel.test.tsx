@@ -18,6 +18,7 @@ describe('project source selector', () => {
   it('shows inspection-only evidence and removal controls for an upload', () => {
     const project: ExternalProject = {
       id: 'a1b2c3d4e5f6', name: 'Uploaded app', source: 'upload', root_path: 'isolated/import',
+      invariant_description: 'At most one active booking exists per resource.',
       files_discovered: 2, supported_files: ['operations.py'], warnings: [], sqlalchemy_detected: true,
       postgresql_configuration_detected: false, onboarding_state: 'INSPECTION_ONLY', ready_for_experiment: false,
       missing_requirements: ['Provide and validate a target adapter.'],

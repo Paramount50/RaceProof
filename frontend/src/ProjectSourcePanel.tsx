@@ -8,13 +8,14 @@ type Props = {
   project: ExternalProject | null
   loading: boolean
   error: string | null
-  onUpload: (files: File[], name: string | null) => Promise<void>
+  onUpload: (files: File[], name: string | null, invariantDescription: string) => Promise<void>
   onRemove: () => Promise<boolean>
 }
 
 export function ProjectSourcePanel({ project, loading, error, onUpload, onRemove }: Props) {
   const [mode, setMode] = useState<SourceMode>(project?.source ?? 'examples')
   const [projectName, setProjectName] = useState('')
+  const [invariantDescription, setInvariantDescription] = useState('')
   const [files, setFiles] = useState<File[]>([])
 
   useEffect(() => {
@@ -37,14 +38,16 @@ export function ProjectSourcePanel({ project, loading, error, onUpload, onRemove
     {!project && mode === 'examples' && <div className="source-copy"><strong>Booking Double Reservation and Inventory Oversell</strong><p>The validated built-in targets remain active. Select either example from the header and run the existing workflow.</p></div>}
     {!project && mode === 'upload' && <div className="source-form">
       <label>Project name<input value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="Optional display name" /></label>
+      <label>Business invariant<textarea value={invariantDescription} onChange={event => setInvariantDescription(event.target.value)} placeholder="What must always remain true? Example: at most one active booking exists per resource." maxLength={500} rows={3} /><small>RaceProof will base deterministic verification on this rule.</small></label>
       <label>Python files or ZIP archive<input type="file" accept=".py,.zip" multiple onChange={event => setFiles(Array.from(event.target.files ?? []))} /></label>
       <small>{files.length ? `${files.length} file${files.length === 1 ? '' : 's'} selected` : 'No files selected'}</small>
-      <button className="source-primary" disabled={loading || !files.length} onClick={() => { void onUpload(files, projectName.trim() || null) }}>Upload and inspect</button>
+      <button className="source-primary" disabled={loading || !files.length || !invariantDescription.trim()} onClick={() => { void onUpload(files, projectName.trim() || null, invariantDescription.trim()) }}>Upload and inspect</button>
     </div>}
     {project && <div className="active-project">
       <div className="active-project-head"><div><span>ISOLATED UPLOAD</span><strong>{project.name}</strong><small>{project.root_path}</small></div><button className="remove-project" onClick={() => { void backToExamples() }} disabled={loading}><Trash2 size={14}/>Remove uploaded files</button></div>
       <div className="project-metrics"><div><span>Python files</span><strong>{project.supported_files.length}</strong></div><div><span>Suspicious operations</span><strong>{project.findings.length}</strong></div><div><span>SQLAlchemy</span><strong>{project.sqlalchemy_detected ? 'Detected' : 'Not detected'}</strong></div><div><span>PostgreSQL config</span><strong>{project.postgresql_configuration_detected ? 'Source evidence' : 'Not detected'}</strong></div></div>
       <div className="inspection-state"><strong>Inspection only</strong><p>Static findings are hypotheses. This project cannot run until an adapter, approved invariant, schedule, actor inputs, and a disposable experiment database are validated.</p></div>
+      <div className="invariant-card"><span>PROPOSED BUSINESS INVARIANT</span><strong>{project.invariant_description || 'Not provided'}</strong><small>This statement is a proposal for review. It is not yet an approved verification oracle.</small></div>
       <div className="finding-list">{project.findings.slice(0, 20).map((finding, index) => <div className="finding" key={`${finding.file}-${finding.line_start}-${index}`}><strong>{finding.function ?? 'module'} · {finding.file}:{finding.line_start}</strong><span>{finding.signals.join(' · ')}</span><p>{finding.explanation}</p></div>)}{!project.findings.length && <p className="evidence-empty">No suspicious operation matched the bounded static patterns. This does not prove the code is race-free.</p>}</div>
       <div className="missing-requirements"><strong>Required before controlled execution</strong>{project.missing_requirements.map(item => <span key={item}>{item}</span>)}</div>
       <button className="back-examples" onClick={() => { void backToExamples() }} disabled={loading}>Back to examples</button>

@@ -86,12 +86,29 @@ def test_project_upload_api_returns_inspection_only_state(tmp_path: Path, monkey
     response = TestClient(app).post(
         "/api/projects/upload",
         files={"files": ("operation.py", SUSPICIOUS_SOURCE, "text/x-python")},
-        data={"project_name": "API upload"},
+        data={
+            "project_name": "API upload",
+            "invariant_description": "At most one active booking exists per resource.",
+        },
     )
 
     assert response.status_code == 201
     assert response.json()["onboarding_state"] == "INSPECTION_ONLY"
     assert response.json()["ready_for_experiment"] is False
+    assert response.json()["invariant_description"] == (
+        "At most one active booking exists per resource."
+    )
+
+
+def test_project_upload_api_requires_business_invariant(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("raceproof.api.project_manager", manager_for(tmp_path))
+    response = TestClient(app).post(
+        "/api/projects/upload",
+        files={"files": ("operation.py", SUSPICIOUS_SOURCE, "text/x-python")},
+    )
+
+    assert response.status_code == 422
+    assert "business invariant" in response.json()["detail"]
 
 
 def test_remove_upload_deletes_only_owned_workspace_and_returns_to_examples(

@@ -63,12 +63,13 @@ function App() {
     setReviewState(null); setReviewError(null); setReviewComment('')
   }
 
-  async function uploadExternalProject(files: File[], name: string | null) {
+  async function uploadExternalProject(files: File[], name: string | null, invariantDescription: string) {
     setProjectLoading(true); setProjectError(null)
     try {
       const body = new FormData()
       files.forEach(file => body.append('files', file))
       if (name) body.append('project_name', name)
+      body.append('invariant_description', invariantDescription)
       const response = await fetch(`${API}/api/projects/upload`, { method: 'POST', body })
       const data = await response.json()
       if (!response.ok) throw new Error(data.detail ?? 'Could not import uploaded project.')

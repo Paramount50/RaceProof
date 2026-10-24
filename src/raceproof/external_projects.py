@@ -44,6 +44,7 @@ class ProjectSource(StrEnum):
 class ExternalProject(BaseModel):
     id: str
     name: str
+    invariant_description: str | None = None
     source: ProjectSource
     root_path: str
     files_discovered: int
@@ -140,7 +141,10 @@ class ExternalProjectManager:
             }
 
     def import_uploads(
-        self, uploads: list[tuple[str, bytes]], name: str | None = None
+        self,
+        uploads: list[tuple[str, bytes]],
+        name: str | None = None,
+        invariant_description: str | None = None,
     ) -> ExternalProject:
         if not uploads:
             raise ExternalProjectError("at least one Python file or ZIP archive is required")
@@ -175,6 +179,7 @@ class ExternalProjectManager:
                 ProjectSource.UPLOAD,
                 (name or Path(uploads[0][0]).stem or "uploaded-project").strip(),
                 project_id=project_id,
+                invariant_description=invariant_description,
             )
             self._activate(project)
         except Exception:
@@ -260,6 +265,7 @@ class ExternalProjectManager:
         name: str,
         *,
         project_id: str | None = None,
+        invariant_description: str | None = None,
     ) -> ExternalProject:
         supported: list[str] = []
         findings: list[StaticFinding] = []
@@ -317,6 +323,7 @@ class ExternalProjectManager:
         return ExternalProject(
             id=project_id or uuid.uuid4().hex[:12],
             name=name[:120] or "external-project",
+            invariant_description=invariant_description,
             source=source,
             root_path=str(root),
             files_discovered=discovered,

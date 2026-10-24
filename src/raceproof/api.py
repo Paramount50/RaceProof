@@ -136,6 +136,7 @@ def get_active_project() -> ExternalProject | None:
 async def upload_project(
     files: Annotated[list[UploadFile], File()],
     project_name: Annotated[str | None, Form()] = None,
+    invariant_description: Annotated[str | None, Form()] = None,
 ) -> ExternalProject:
     if len(files) > 50:
         raise HTTPException(status_code=422, detail="too many uploaded files")
@@ -149,7 +150,18 @@ async def upload_project(
             raise HTTPException(status_code=413, detail="upload exceeds the configured size limit")
         uploads.append((upload.filename or "upload", payload))
     try:
-        return project_manager.import_uploads(uploads, project_name)
+        invariant = invariant_description.strip() if invariant_description else None
+        if not invariant:
+            raise HTTPException(
+                status_code=422,
+                detail="describe the business invariant RaceProof must preserve",
+            )
+        if len(invariant) > 500:
+            raise HTTPException(
+                status_code=422,
+                detail="business invariant must be 500 characters or fewer",
+            )
+        return project_manager.import_uploads(uploads, project_name, invariant)
     except ExternalProjectError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

@@ -38,6 +38,7 @@ export type StaticFinding = {
 export type ExternalProject = {
   id: string
   name: string
+  invariant_description?: string | null
   source: 'upload'
   root_path: string
   files_discovered: number
