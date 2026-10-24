@@ -56,13 +56,18 @@ def create_database_engine(url: str | None = None, recorder: EventRecorder | Non
             _context: Any,
             _executemany: bool,
         ) -> None:
+            actor = getattr(_actor_context, "actor", None)
+            if actor == "__lock_observer__":
+                return
             compact = " ".join(statement.split())
+            driver_connection = getattr(_connection.connection, "driver_connection", None)
+            backend_pid = getattr(getattr(driver_connection, "info", None), "backend_pid", None)
             recorder.add(
                 EventKind.SQL,
                 stage="execute",
-                actor=getattr(_actor_context, "actor", None),
+                actor=actor,
                 action="sql",
-                detail={"statement": compact[:600]},
+                detail={"statement": compact[:600], "backend_pid": backend_pid},
             )
 
     return engine

@@ -10,7 +10,8 @@ def test_benchmark_excludes_warmup_and_keeps_engine_alive(monkeypatch) -> None:
         def __init__(self, engine, recorder, timeout_seconds):
             calls.append(("init", engine, timeout_seconds))
 
-        def execute(self, adapter, actors, schedule, *, exact):
+        def execute(self, adapter, actors, schedule, *, exact, capture_lock_evidence):
+            assert capture_lock_evidence is False
             return SimpleNamespace(
                 elapsed_ms=10 + len(calls),
                 actor_outcomes={"a": "accepted", "b": "rejected"},

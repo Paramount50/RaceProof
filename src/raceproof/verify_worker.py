@@ -101,6 +101,7 @@ def verify(
     operation_source_sha256 = hashlib.sha256(operation_source.encode()).hexdigest()
     selected_results = []
     all_results = []
+    lock_evidence_results = []
     attempted_modes: list[str] = []
     operation_invocations = 0
     replay_workers_terminated = True
@@ -200,6 +201,18 @@ def verify(
         regression = None
         performance = None
 
+    if replay_isolation:
+        diagnostic_schedule = config.verification_schedules[-1]
+        diagnostic_result, _, _ = _execute_schedule(
+            database_url,
+            adapter,
+            config.actors,
+            diagnostic_schedule,
+            operation,
+            exact=False,
+        )
+        lock_evidence_results.append(diagnostic_result)
+
     performance_acceptable = (
         performance is not None
         and performance.runs > 0
@@ -231,6 +244,7 @@ def verify(
         replay_mode="+".join(replay_modes) if replay_modes else "unverifiable",
         gates=gates,
         schedule_results=selected_results,
+        lock_evidence_results=lock_evidence_results,
         regression_output=(
             (regression.stdout + regression.stderr)[-8000:]
             if regression is not None

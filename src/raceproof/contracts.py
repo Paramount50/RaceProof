@@ -69,6 +69,24 @@ class InvariantResult(BaseModel):
     explanation: str
 
 
+class LockWaitEvidence(BaseModel):
+    waiting_actor: str
+    blocking_actors: list[str] = Field(default_factory=list)
+    lock_type: str
+    lock_mode: str
+    relation: str | None = None
+    duration_ms: float
+    release_points: list[str] = Field(default_factory=list)
+
+
+class WaitForEdge(BaseModel):
+    waiting_actor: str
+    blocking_actor: str
+    lock_type: str
+    lock_mode: str
+    relation: str | None = None
+
+
 class ScheduleAction(BaseModel):
     kind: Literal["wait_checkpoint", "release", "wait_completion", "release_all"]
     actors: list[str] = Field(default_factory=list)
@@ -180,6 +198,13 @@ class ScheduleResult(BaseModel):
     elapsed_ms: float
     error: str | None = None
     workers_terminated: bool = True
+    lock_observation_status: Literal["not_requested", "available", "unavailable"] = (
+        "not_requested"
+    )
+    lock_observation_error: str | None = None
+    lock_waits: list[LockWaitEvidence] = Field(default_factory=list)
+    wait_for_edges: list[WaitForEdge] = Field(default_factory=list)
+    deadlock_cycle: bool = False
 
 
 class StaticFinding(BaseModel):
@@ -328,6 +353,7 @@ class VerificationReport(BaseModel):
     replay_mode: str
     gates: dict[str, bool]
     schedule_results: list[ScheduleResult]
+    lock_evidence_results: list[ScheduleResult] = Field(default_factory=list)
     regression_output: str
     performance: PerformanceResult | None
     limitations: list[str]
