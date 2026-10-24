@@ -4,7 +4,7 @@ import json
 import math
 import os
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from langchain.agents import create_agent
 from langchain.tools import tool
@@ -50,6 +50,9 @@ class RepairModel(Protocol):
     def propose(self, bundle: FailureBundle) -> PatchProposal: ...
 
 
+T = TypeVar("T")
+
+
 def _availability(model_name: str, api_key: str | None = None) -> tuple[bool, str]:
     key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key or key == "placeholder":
@@ -75,7 +78,12 @@ def _gemini(model_name: str, api_key: str | None = None):
 
 
 def _openrouter(model_name: str, api_key: str):
-    from langchain_openai import ChatOpenAI
+    try:
+        from langchain_openai import ChatOpenAI
+    except ImportError as exc:
+        raise ModelConfigurationError(
+            "OpenRouter fallback is unavailable because langchain-openai is not installed"
+        ) from exc
 
     validate_openrouter_free_model(model_name)
     return ChatOpenAI(
@@ -109,12 +117,16 @@ def _invoke_agent(
     message_count: int | None = None,
     context_characters: int | None = None,
     estimated_input_tokens: int | None = None,
+    parse_result: Callable[[Any], T] | None = None,
 ) -> Any:
     try:
         return tracker.invoke_with_retry(
             agent=agent_name,
             model=model_name,
-            invoke=lambda config: build(model_name, "gemini").invoke(payload, config=config),
+            invoke=lambda config: _parse_invocation_result(
+                build(model_name, "gemini").invoke(payload, config=config),
+                parse_result,
+            ),
             max_retries=max_retries,
             operation=operation,
             max_retry_wait_seconds=max_retry_wait_seconds,
@@ -161,9 +173,10 @@ def _invoke_agent(
                     return tracker.invoke_with_retry(
                         agent=agent_name,
                         model=candidate,
-                        invoke=lambda config, selected=candidate: build(
-                            selected, "openrouter"
-                        ).invoke(payload, config=config),
+                        invoke=lambda config, selected=candidate: _parse_invocation_result(
+                            build(selected, "openrouter").invoke(payload, config=config),
+                            parse_result,
+                        ),
                         max_retries=max_retries,
                         fallback=True,
                         operation=operation,
@@ -196,11 +209,37 @@ def _invoke_agent(
         return tracker.invoke_with_retry(
             agent=agent_name,
             model=fallback_model,
-            invoke=lambda config: build(fallback_model, "gemini").invoke(payload, config=config),
+            invoke=lambda config: _parse_invocation_result(
+                build(fallback_model, "gemini").invoke(payload, config=config),
+                parse_result,
+            ),
             max_retries=max_retries,
             fallback=True,
             operation=operation,
         )
+
+
+def _parse_invocation_result(result: Any, parser: Callable[[Any], T] | None) -> Any:
+    return parser(result) if parser is not None else result
+
+
+def _parse_repair_response(result: Any) -> PatchProposal:
+    if isinstance(result, PatchProposal):
+        return result
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except json.JSONDecodeError as exc:
+            raise StructuredOutputError(
+                "malformed JSON repair response"
+            ) from exc
+    try:
+        return PatchProposal.model_validate(result)
+    except ValueError as exc:
+        raise StructuredOutputError(
+            "schema-invalid repair response: "
+            f"{_structured_response_summary(result)}; validation={type(exc).__name__}"
+        ) from exc
 
 
 def _called_tools(result: dict[str, object]) -> list[dict[str, object]]:
@@ -615,11 +654,6 @@ a strategy that serializes the actual contention key and let deterministic verif
             message_count=2,
             context_characters=context_characters,
             estimated_input_tokens=estimated_input_tokens,
+            parse_result=_parse_repair_response,
         )
-        try:
-            return PatchProposal.model_validate(result)
-        except ValueError as exc:
-            raise StructuredOutputError(
-                "invalid repair response: "
-                f"{_structured_response_summary(result)}; validation={type(exc).__name__}"
-            ) from exc
+        return result

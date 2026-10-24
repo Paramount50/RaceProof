@@ -41,6 +41,7 @@ from raceproof.usage import (
     ModelRequestRecord,
     ModelRuntimeError,
     ProvidersExhaustedError,
+    StructuredOutputError,
     UsageLimits,
     UsageTracker,
 )
@@ -176,10 +177,13 @@ class RaceProofRunner:
             status = FinalStatus.MODEL_CONFIGURATION_ERROR
         elif isinstance(exc, ModelRuntimeError) and exc.code == "MODEL_UNAVAILABLE":
             status = FinalStatus.MODEL_UNAVAILABLE
+        reason = f"{prefix}: {type(exc).__name__}: {exc}"
+        if isinstance(exc, StructuredOutputError):
+            reason = f"STRUCTURED_OUTPUT_RETRIES_EXHAUSTED: {reason}"
         return {
             "status": status.value,
             "terminal_reason": redact_sensitive(
-                f"{prefix}: {type(exc).__name__}: {exc}",
+                reason,
                 self.settings.gemini_api_key_value,
                 self.settings.openrouter_api_key_value,
             ),

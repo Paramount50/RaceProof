@@ -83,6 +83,7 @@ class ModelTransientError(ModelRuntimeError):
 
 class StructuredOutputError(ModelRuntimeError):
     code = "STRUCTURED_OUTPUT_ERROR"
+    transient = True
 
 
 class ContextLimitExceededError(BudgetExceededError):
