@@ -1,4 +1,4 @@
-import { Activity, Clock, Database, GitCompare, LockKeyhole } from 'lucide-react'
+import { Activity, Clock, Database, ExternalLink, GitCompare, LockKeyhole } from 'lucide-react'
 import type { RunEvent, ScheduleResult } from './types'
 
 export function orderedScheduleEvents(events: RunEvent[]) {
@@ -72,5 +72,24 @@ export function StageDurationPanel({ timings }: { timings: Record<string, number
       {entries.map(([stage, duration]) => <div key={stage}><span>{stage.replaceAll('_', ' ')}</span><strong>{formatDuration(duration)}</strong></div>)}
       {!entries.length && <p className="evidence-empty">Stage durations appear when a report is complete.</p>}
     </div>
+  </article>
+}
+
+type ObservabilityStatus = {
+  enabled: boolean
+  configured: boolean
+  project: string
+  reason: string
+}
+
+export function LangSmithPanel({ status, traceUrl }: { status?: ObservabilityStatus; traceUrl?: string | null }) {
+  return <article className="panel evidence-feature observability-panel">
+    <div className="panel-head"><div><span className="kicker">OPTIONAL OBSERVABILITY</span><h2>LangSmith</h2></div><ExternalLink size={20}/></div>
+    <div className="invariant-stats">
+      <div className="metric"><span>Tracing</span><strong>{status?.enabled ? 'Enabled' : 'Disabled'}</strong></div>
+      <div className="metric"><span>Configured</span><strong>{status?.configured ? 'Yes' : 'No'}</strong></div>
+    </div>
+    <div className="agent-summary"><strong>{status?.project ?? 'raceproof-local-dev'}</strong><p>{status?.reason ?? 'Tracing status is unavailable.'}</p><small>Metadata only. Inputs and outputs remain hidden.</small></div>
+    {traceUrl && <a className="trace-link" href={traceUrl} target="_blank" rel="noreferrer">Open established trace</a>}
   </article>
 }

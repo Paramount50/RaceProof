@@ -90,6 +90,12 @@ OPENROUTER_API_KEY=placeholder
 
 Keep `.env` local. It is ignored by Git. Restart the backend after changing it, then run `raceproof model-status` for a no-network detection check and `raceproof validate-models` for the opt-in live capability check. Never paste a real key into source, frontend variables, logs, reports, or chat.
 
+### Optional LangSmith observability
+
+LangSmith tracing is disabled by default and is not required for investigation, repair, PostgreSQL verification, local reports, or the dashboard. Install the optional dependency with `python -m pip install -e ".[observability]"`, then configure `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, and optionally `LANGSMITH_PROJECT` or `LANGSMITH_ENDPOINT`.
+
+RaceProof permits metadata-only tracing. `LANGSMITH_HIDE_INPUTS` and `LANGSMITH_HIDE_OUTPUTS` must both remain `true`; otherwise tracing stays disabled. Traces may contain run IDs, stage durations, provider and model identifiers, request and token counts, retry and fallback counts, error categories, and verification gate outcomes. They do not intentionally export source files, SQL parameters, schemas, model prompts, generated patches, credentials, or connection strings. Local JSONL history, `report.json`, usage accounting, SQL evidence, and verification reports remain authoritative. A tracing initialization or export failure does not change the RaceProof result.
+
 If Docker is unavailable on Windows and PostgreSQL 17 is installed:
 
 ```powershell

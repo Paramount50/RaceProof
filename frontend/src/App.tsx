@@ -9,7 +9,7 @@ import { normalizeUsage } from './usage'
 import { deriveStageStates } from './progress'
 import { describeRepairAttempt } from './repairView'
 import { isTerminalStatus, normalizeStatus, statusLabel, statusTone } from './status'
-import { DatabaseBehaviorComparison, LockWaitPanel, SchedulePlayer, StageDurationPanel } from './EvidencePanels'
+import { DatabaseBehaviorComparison, LangSmithPanel, LockWaitPanel, SchedulePlayer, StageDurationPanel } from './EvidencePanels'
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const stages = ['load_target', 'inspect', 'investigate', 'execute_experiment', 'observe', 'repair', 'apply_patch', 'verify', 'finalize']
@@ -217,6 +217,7 @@ function App() {
       <DatabaseBehaviorComparison before={baseline} after={verifiedSchedule}/>
       <LockWaitPanel result={lockEvidence}/>
       <StageDurationPanel timings={report?.stage_timings_ms ?? {}}/>
+      <LangSmithPanel status={report?.observability ?? modelStatus?.observability?.langsmith} traceUrl={report?.trace_url}/>
     </section>
 
     <section className="panel diff-panel">

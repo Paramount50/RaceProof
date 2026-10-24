@@ -389,6 +389,8 @@ class RunReport(BaseModel):
     final_diff: str | None = None
     events: list[RunEvent] = Field(default_factory=list)
     stage_timings_ms: dict[str, float] = Field(default_factory=dict)
+    observability: dict[str, Any] = Field(default_factory=dict)
+    trace_url: str | None = None
     limitations: list[str] = Field(default_factory=list)
     human_approval_required: bool = True
     investigation_model: str = ""

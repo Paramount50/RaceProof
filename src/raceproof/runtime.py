@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from raceproof.config import Settings
+from raceproof.observability import langsmith_status
 from raceproof.usage import UsageLimits, UsageTracker
 
 
@@ -64,6 +65,7 @@ def model_status(settings: Settings) -> dict[str, object]:
         "repair_model": settings.resolved_repair_model,
         "fallback_model": settings.fallback_model,
         "fallback_enabled": settings.enable_model_fallback,
+        "observability": {"langsmith": langsmith_status(settings)},
         "budgets": {
             "max_model_requests": settings.max_model_requests,
             "max_investigation_requests": settings.max_investigation_requests,

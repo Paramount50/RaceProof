@@ -29,6 +29,7 @@ from raceproof.database import create_database_engine
 from raceproof.events import EventRecorder
 from raceproof.inspection import inspect_python_file
 from raceproof.model import InvestigationModel, RepairModel
+from raceproof.observability import LangSmithObservability
 from raceproof.patching import PatchGuard, WorkspaceManager, canonical_diff, replacement_diff
 from raceproof.scheduler import ControlledScheduler, benchmark_schedule
 from raceproof.security import redact_sensitive
@@ -101,6 +102,7 @@ class RaceProofRunner:
         repair_model: RepairModel,
         listener: Any | None = None,
         usage_tracker: UsageTracker | None = None,
+        observability: LangSmithObservability | None = None,
     ) -> None:
         self.engine_root = engine_root.resolve()
         self.target = target
@@ -109,6 +111,7 @@ class RaceProofRunner:
         self.investigation_model = investigation_model
         self.repair_model = repair_model
         self.usage_tracker = usage_tracker or UsageTracker(UsageLimits())
+        self.observability = observability or LangSmithObservability(settings)
         self.recorder = EventRecorder(listener)
         self.usage_tracker.set_event_listener(self._model_request_event)
         artifact_root = (self.engine_root / settings.artifact_dir).resolve()
@@ -894,6 +897,7 @@ class RaceProofRunner:
             openrouter_investigation_models=self.settings.openrouter_investigation_model_list,
             openrouter_repair_models=self.settings.openrouter_repair_model_list,
             usage=self.usage_tracker.snapshot(),
+            observability=self.observability.status,
         )
 
     def _write_report(self, report: RunReport) -> None:
@@ -914,24 +918,41 @@ class RaceProofRunner:
             "attempt_number": 0,
         }
         self._latest_state = initial
-        try:
-            final = self.graph.invoke(
-                initial,
-                config={"configurable": {"thread_id": run_id}, "recursion_limit": 40},
-            )
-            report = self._build_report(final, run_id, started_at)
-        except KeyboardInterrupt:
-            state = {
-                **self._latest_state,
-                "status": FinalStatus.INTERRUPTED.value,
-                "terminal_reason": "Run interrupted by operator",
+        with self.observability.trace_run(run_id, self.target.config.id) as trace_session:
+            try:
+                final = self.graph.invoke(
+                    initial,
+                    config={
+                        "configurable": {"thread_id": run_id},
+                        "recursion_limit": 40,
+                        "metadata": {
+                            "raceproof_run_id": run_id,
+                            "target_id": self.target.config.id,
+                            "content_policy": "metadata_only",
+                        },
+                        "tags": ["raceproof", self.target.config.id],
+                    },
+                )
+                report = self._build_report(final, run_id, started_at)
+            except KeyboardInterrupt:
+                state = {
+                    **self._latest_state,
+                    "status": FinalStatus.INTERRUPTED.value,
+                    "terminal_reason": "Run interrupted by operator",
+                }
+                self._persist(run_id, "interrupted", state)
+                report = self._build_report(state, run_id, started_at, FinalStatus.INTERRUPTED)
+            except Exception as exc:  # noqa: BLE001 - persist handled workflow failures
+                failure = self._model_failure(exc, "Workflow failed")
+                state = {**self._latest_state, **failure}
+                self._persist(run_id, "workflow_error", state)
+                report = self._build_report(state, run_id, started_at)
+            trace_session.record_report(report)
+        report = report.model_copy(
+            update={
+                "observability": trace_session.status,
+                "trace_url": trace_session.trace_url,
             }
-            self._persist(run_id, "interrupted", state)
-            report = self._build_report(state, run_id, started_at, FinalStatus.INTERRUPTED)
-        except Exception as exc:  # noqa: BLE001 - persist handled workflow failures
-            failure = self._model_failure(exc, "Workflow failed")
-            state = {**self._latest_state, **failure}
-            self._persist(run_id, "workflow_error", state)
-            report = self._build_report(state, run_id, started_at)
+        )
         self._write_report(report)
         return report

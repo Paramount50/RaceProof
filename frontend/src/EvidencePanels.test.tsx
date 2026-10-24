@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { DatabaseBehaviorComparison, LockWaitPanel, StageDurationPanel, orderedScheduleEvents } from './EvidencePanels'
+import { DatabaseBehaviorComparison, LangSmithPanel, LockWaitPanel, StageDurationPanel, orderedScheduleEvents } from './EvidencePanels'
 import type { RunEvent, ScheduleResult } from './types'
 
 const event = (sequence: number, kind: RunEvent['kind'], actor: string | null, action: string): RunEvent => ({
@@ -46,5 +46,11 @@ describe('evidence panels', () => {
     const html = renderToStaticMarkup(<StageDurationPanel timings={{ inspect: 15, verify: 1250 }}/>)
     expect(html).toContain('15 ms')
     expect(html).toContain('1.25 s')
+  })
+
+  it('shows a trace link only when a reference exists', () => {
+    const status = { enabled: true, configured: true, project: 'raceproof-local-dev', reason: 'metadata-only tracing is enabled' }
+    expect(renderToStaticMarkup(<LangSmithPanel status={status}/>)).not.toContain('Open established trace')
+    expect(renderToStaticMarkup(<LangSmithPanel status={status} traceUrl="https://smith.langchain.com/o/example"/>)).toContain('Open established trace')
   })
 })

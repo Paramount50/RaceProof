@@ -63,6 +63,34 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="OPENROUTER_API_KEY",
     )
+    langsmith_tracing: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LANGSMITH_TRACING", "RACEPROOF_LANGSMITH_TRACING"),
+    )
+    langsmith_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGSMITH_API_KEY", "RACEPROOF_LANGSMITH_API_KEY"),
+    )
+    langsmith_project: str = Field(
+        default="raceproof-local-dev",
+        validation_alias=AliasChoices("LANGSMITH_PROJECT", "RACEPROOF_LANGSMITH_PROJECT"),
+    )
+    langsmith_endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGSMITH_ENDPOINT", "RACEPROOF_LANGSMITH_ENDPOINT"),
+    )
+    langsmith_hide_inputs: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "LANGSMITH_HIDE_INPUTS", "RACEPROOF_LANGSMITH_HIDE_INPUTS"
+        ),
+    )
+    langsmith_hide_outputs: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "LANGSMITH_HIDE_OUTPUTS", "RACEPROOF_LANGSMITH_HIDE_OUTPUTS"
+        ),
+    )
     max_repair_attempts: int = Field(default=3, ge=1, le=5)
     max_investigation_attempts: int = Field(default=3, ge=1, le=5)
     schedule_timeout_seconds: float = Field(default=8.0, gt=0, le=60)
@@ -126,6 +154,11 @@ class Settings(BaseSettings):
     @property
     def openrouter_api_key_value(self) -> str | None:
         value = self.openrouter_api_key.get_secret_value() if self.openrouter_api_key else None
+        return None if value in {None, "", "placeholder"} else value
+
+    @property
+    def langsmith_api_key_value(self) -> str | None:
+        value = self.langsmith_api_key.get_secret_value() if self.langsmith_api_key else None
         return None if value in {None, "", "placeholder"} else value
 
     @staticmethod

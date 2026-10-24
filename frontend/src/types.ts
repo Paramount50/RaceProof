@@ -117,6 +117,16 @@ export type RunReport = {
   baseline: ScheduleResult | null
   final_diff: string | null
   stage_timings_ms: Record<string, number>
+  observability: {
+    enabled: boolean
+    configured: boolean
+    project: string
+    endpoint_configured: boolean
+    hide_inputs: boolean
+    hide_outputs: boolean
+    reason: string
+  }
+  trace_url: string | null
   attempts: Array<{
     number: number
     proposal?: {
@@ -205,6 +215,17 @@ export type ModelStatus = {
   repair_model: string
   fallback_model: string
   fallback_enabled: boolean
+  observability: {
+    langsmith: {
+      enabled: boolean
+      configured: boolean
+      project: string
+      endpoint_configured: boolean
+      hide_inputs: boolean
+      hide_outputs: boolean
+      reason: string
+    }
+  }
   budgets: Record<string, number>
   configuration: {
     env_file: string
