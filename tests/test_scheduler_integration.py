@@ -58,7 +58,7 @@ class LockProbeAdapter(TargetAdapter):
         with actor_session(engine, actor.id) as session:
             checkpoint(actor.id, "before_operation")
             session.execute(text("SELECT id FROM raceproof_lock_probe WHERE id = 1 FOR UPDATE"))
-            time.sleep(0.1)
+            time.sleep(0.35)
             session.execute(
                 text("UPDATE raceproof_lock_probe SET value = value + 1 WHERE id = 1")
             )
