@@ -229,6 +229,7 @@ class StaticFinding(BaseModel):
     file: str
     line_start: int
     line_end: int
+    function: str | None = None
     severity: str
     signals: list[str]
     explanation: str
