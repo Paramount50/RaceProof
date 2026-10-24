@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from raceproof.config import get_settings
 from raceproof.database import create_database_engine
+from raceproof.report_store import InvalidReportArtifact, InvalidRunId, ReportStore
 from raceproof.runtime import model_status
 from raceproof.security import redact_sensitive
 from raceproof.service import RunService
@@ -32,6 +33,13 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+def _persisted_report(run_id: str):
+    try:
+        return ReportStore(repository_root, get_settings().artifact_dir).load(run_id)
+    except (InvalidRunId, InvalidReportArtifact):
+        return None
 
 
 @app.get("/api/health")
@@ -84,7 +92,18 @@ def list_targets() -> list[dict[str, object]]:
 def get_run(run_id: str) -> dict[str, object]:
     active = service.get(run_id)
     if active is None:
-        raise HTTPException(status_code=404, detail="run not found")
+        report = _persisted_report(run_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        return {
+            "run_id": report.run_id,
+            "status": report.status.value,
+            "events": [event.model_dump(mode="json") for event in report.events],
+            "report": report.model_dump(mode="json"),
+            "error": None,
+            "usage": report.usage.model_dump(mode="json"),
+            "source": "persisted",
+        }
     return {
         "run_id": run_id,
         "status": active.status,
@@ -101,7 +120,16 @@ def get_run(run_id: str) -> dict[str, object]:
 def stream_events(run_id: str) -> StreamingResponse:
     active = service.get(run_id)
     if active is None:
-        raise HTTPException(status_code=404, detail="run not found")
+        report = _persisted_report(run_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="run not found")
+
+        def generate_persisted():
+            for event in report.events:
+                yield f"data: {event.model_dump_json()}\n\n"
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(generate_persisted(), media_type="text/event-stream")
 
     def generate():
         for existing in active.events:
@@ -120,7 +148,10 @@ def stream_events(run_id: str) -> StreamingResponse:
 def get_report(run_id: str):
     active = service.get(run_id)
     if active is None:
-        raise HTTPException(status_code=404, detail="run not found")
+        report = _persisted_report(run_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        return report
     if active.report is None:
         raise HTTPException(status_code=409, detail="report is not ready")
     return active.report
