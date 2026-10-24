@@ -210,6 +210,15 @@ def _called_tools(result: dict[str, object]) -> list[dict[str, object]]:
     return calls
 
 
+def _structured_response_summary(value: object) -> str:
+    if isinstance(value, dict):
+        keys = sorted(str(key) for key in value)
+        return f"object keys={keys}"
+    if value is None:
+        return "null response"
+    return f"{type(value).__name__} response"
+
+
 class GeminiInvestigationAgent:
     """Read-oriented LLM agent that proposes bounded deterministic experiments."""
 
@@ -610,4 +619,7 @@ a strategy that serializes the actual contention key and let deterministic verif
         try:
             return PatchProposal.model_validate(result)
         except ValueError as exc:
-            raise StructuredOutputError(f"invalid repair response: {exc}") from exc
+            raise StructuredOutputError(
+                "invalid repair response: "
+                f"{_structured_response_summary(result)}; validation={type(exc).__name__}"
+            ) from exc

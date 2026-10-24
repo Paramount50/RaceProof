@@ -14,9 +14,21 @@ from raceproof.contracts import (
     ScheduleResult,
     ScheduleStatus,
 )
-from raceproof.model import GeminiInvestigationAgent, GeminiRepairAgent
+from raceproof.model import (
+    GeminiInvestigationAgent,
+    GeminiRepairAgent,
+    _structured_response_summary,
+)
 from raceproof.target import TargetRegistry, load_adapter
 from raceproof.usage import UsageLimits, UsageTracker
+
+
+def test_structured_response_summary_does_not_include_response_content() -> None:
+    summary = _structured_response_summary(
+        {"diagnosis": "private source content", "strategy": "private repair"}
+    )
+    assert summary == "object keys=['diagnosis', 'strategy']"
+    assert "private" not in summary
 
 
 def repair_bundle() -> FailureBundle:
