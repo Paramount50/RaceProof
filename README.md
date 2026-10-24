@@ -138,9 +138,13 @@ The primary Investigation Agent uses `gemini-3.5-flash-lite`, and the primary Re
 
 An OpenRouter 429 with `limit_source=upstream_provider_shared_pool` skips that model immediately instead of retrying the same unavailable shared pool. Other transient retries honor `Retry-After` up to `RACEPROOF_MAX_RETRY_WAIT_SECONDS`, which defaults to three seconds. Model switches keep the same LangGraph operation, PostgreSQL evidence, patch state, and global usage ledger.
 
+Fallback recovery is bounded by `RACEPROOF_MAX_FALLBACK_DURATION_SECONDS`, which defaults to 120 seconds. When the configured fallback candidates and their retries are exhausted, RaceProof persists a terminal report instead of leaving the run without `report.json`.
+
 RaceProof local budgets are separate from provider quotas. Defaults are 14 total requests, 6 Investigation requests, 8 Repair requests, a 6-request Repair reserve, and 60,000 provider-reported tokens. The measured normal path is two model turns to load evidence and plan, two to interpret the PostgreSQL result, and two for the first repair proposal. The previous nine-tool Investigation interface could consume all five Investigation requests before observation. The consolidated evidence tools remove those repeated fetches. A provider switch continues the same global ledger and never bypasses `BUDGET_EXCEEDED`.
 
 The Repair Agent receives one compact deterministic evidence message and makes one structured model request per proposal. Full execution histories and duplicated SQL traces are excluded. RaceProof records message count, character count, and approximate input tokens without logging source content. `RACEPROOF_MAX_REPAIR_CONTEXT_TOKENS` bounds the serialized repair evidence, while `RACEPROOF_MAX_REQUEST_INPUT_TOKENS` rejects an oversized request before provider dispatch. The agent prefers structured complete-file replacements for explicitly editable paths. RaceProof converts those replacements into a reviewable Git diff deterministically, rejects empty, contradictory, duplicate, or unchanged proposals, and then applies the existing protected-path, syntax, regression, schedule, invariant, and performance gates.
+
+Performance verification uses the same schedule, database reset, shared connection-pool lifecycle, and one discarded warm-up run for baseline and candidate measurements. Reports include the measured sample count, median, p95 samples, and observed regression ratio. A performance failure remains a failed gate and is fed back to the bounded repair loop.
 
 Dashboard stages use explicit `NOT_STARTED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `RETRYING`, and `SKIPPED` backend outcomes. Entering a later stage never implies that an earlier stage succeeded.
 
