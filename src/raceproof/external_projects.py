@@ -70,6 +70,10 @@ class ProjectBusy(ExternalProjectError):
     pass
 
 
+class ProjectCleanupError(ExternalProjectError):
+    pass
+
+
 class ExternalProjectManager:
     def __init__(self, engine_root: Path, settings: Settings) -> None:
         self.engine_root = engine_root.resolve()
@@ -101,6 +105,44 @@ class ExternalProjectManager:
         if project is None:
             raise ProjectNotFound("external project was not found")
         return project
+
+    def mark_run_active(self, project_id: str, run_id: str) -> None:
+        self.get(project_id)
+        with self._lock:
+            self._active_runs.setdefault(project_id, set()).add(run_id)
+
+    def mark_run_finished(self, project_id: str, run_id: str) -> None:
+        with self._lock:
+            self._active_runs.get(project_id, set()).discard(run_id)
+
+    def remove(self, project_id: str) -> dict[str, object]:
+        with self._lock:
+            project = self._projects.get(project_id)
+            if project is None:
+                raise ProjectNotFound("external project was not found")
+            active_runs = self._active_runs.get(project_id, set())
+            if active_runs:
+                raise ProjectBusy("project cannot be removed while an experiment is active")
+            workspace_removed = False
+            if project.source == ProjectSource.UPLOAD:
+                workspace = Path(project.root_path).resolve()
+                if workspace.name != project.id:
+                    raise ProjectCleanupError("uploaded workspace identity is invalid")
+                try:
+                    self._remove_owned_workspace(workspace)
+                except OSError as exc:
+                    raise ProjectCleanupError("uploaded workspace cleanup failed") from exc
+                workspace_removed = True
+            self._projects.pop(project_id, None)
+            self._active_runs.pop(project_id, None)
+            if self._active_project_id == project_id:
+                self._active_project_id = None
+            return {
+                "removed_project_id": project_id,
+                "source": project.source.value,
+                "workspace_removed": workspace_removed,
+                "active_project": None,
+            }
 
     def connect_local(self, path_value: str, name: str | None = None) -> ExternalProject:
         requested = Path(path_value)

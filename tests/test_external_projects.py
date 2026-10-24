@@ -124,3 +124,59 @@ def test_project_upload_api_returns_inspection_only_state(tmp_path: Path, monkey
     assert response.status_code == 201
     assert response.json()["onboarding_state"] == "INSPECTION_ONLY"
     assert response.json()["ready_for_experiment"] is False
+
+
+def test_remove_upload_deletes_only_owned_workspace_and_returns_to_examples(
+    tmp_path: Path,
+) -> None:
+    manager = manager_for(tmp_path)
+    unrelated = tmp_path / "artifacts" / "unrelated.txt"
+    unrelated.parent.mkdir(parents=True)
+    unrelated.write_text("keep", encoding="utf-8")
+    project = manager.import_uploads([("operation.py", SUSPICIOUS_SOURCE.encode())])
+    workspace = Path(project.root_path)
+
+    result = manager.remove(project.id)
+
+    assert result["workspace_removed"] is True
+    assert not workspace.exists()
+    assert unrelated.read_text(encoding="utf-8") == "keep"
+    assert manager.active() is None
+
+
+def test_disconnect_local_project_never_deletes_original_files(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    source = allowed / "operation.py"
+    source.write_text(SUSPICIOUS_SOURCE, encoding="utf-8")
+    manager = manager_for(tmp_path, allowed)
+    project = manager.connect_local(str(allowed))
+
+    result = manager.remove(project.id)
+
+    assert result["workspace_removed"] is False
+    assert source.is_file()
+    assert manager.active() is None
+
+
+def test_remove_refuses_project_with_active_run(tmp_path: Path) -> None:
+    manager = manager_for(tmp_path)
+    project = manager.import_uploads([("operation.py", SUSPICIOUS_SOURCE.encode())])
+    manager.mark_run_active(project.id, "a1b2c3d4e5f6")
+
+    with pytest.raises(ExternalProjectError, match="active"):
+        manager.remove(project.id)
+
+    assert Path(project.root_path).is_dir()
+
+
+def test_remove_project_api_clears_active_selection(tmp_path: Path, monkeypatch) -> None:
+    manager = manager_for(tmp_path)
+    project = manager.import_uploads([("operation.py", SUSPICIOUS_SOURCE.encode())])
+    monkeypatch.setattr("raceproof.api.project_manager", manager)
+
+    response = TestClient(app).delete(f"/api/projects/{project.id}")
+
+    assert response.status_code == 200
+    assert response.json()["active_project"] is None
+    assert TestClient(app).get("/api/projects/active").json() is None

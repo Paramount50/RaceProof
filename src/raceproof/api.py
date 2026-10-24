@@ -16,6 +16,9 @@ from raceproof.external_projects import (
     ExternalProject,
     ExternalProjectError,
     ExternalProjectManager,
+    ProjectBusy,
+    ProjectCleanupError,
+    ProjectNotFound,
 )
 from raceproof.report_store import InvalidReportArtifact, InvalidRunId, ReportStore
 from raceproof.review_store import (
@@ -54,7 +57,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -163,6 +166,16 @@ async def upload_project(
         return project_manager.import_uploads(uploads, project_name)
     except ExternalProjectError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/api/projects/{project_id}")
+def remove_project(project_id: str) -> dict[str, object]:
+    try:
+        return project_manager.remove(project_id)
+    except ProjectNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ProjectBusy, ProjectCleanupError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/runs/{run_id}")
