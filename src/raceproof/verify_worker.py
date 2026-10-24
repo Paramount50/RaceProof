@@ -202,6 +202,7 @@ def verify(
 
     performance_acceptable = (
         performance is not None
+        and performance.runs > 0
         and (
             baseline_p95_ms is None
             or performance.p95_latency_ms
@@ -268,6 +269,22 @@ def verify(
             "replay_workers_terminated": replay_workers_terminated,
             "replay_connections_released": replay_connections_released,
             "replay_engines_disposed": True,
+            "performance_comparison": (
+                {
+                    "baseline_p95_ms": baseline_p95_ms,
+                    "candidate_p95_ms": performance.p95_latency_ms if performance else None,
+                    "regression_ratio": (
+                        performance.p95_latency_ms / baseline_p95_ms
+                        if performance is not None and baseline_p95_ms
+                        else None
+                    ),
+                    "configured_limit": config.verification.performance_regression_limit,
+                    "candidate_samples": performance.latency_samples_ms if performance else [],
+                    "candidate_median_ms": performance.median_latency_ms if performance else None,
+                }
+                if performance is not None
+                else None
+            ),
         },
     )
 

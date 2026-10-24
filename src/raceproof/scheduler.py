@@ -197,19 +197,27 @@ def benchmark_schedule(
     schedule: ScheduleSpec,
     runs: int = 20,
     timeout_seconds: float = 8,
+    warmup_runs: int = 1,
 ) -> PerformanceResult:
     latencies: list[float] = []
     outcome_counts: Counter[str] = Counter()
     errors = deadlocks = schedule_failures = 0
     wall_start = time.perf_counter()
-    for _ in range(runs):
+    measured_start: float | None = None
+    total_runs = warmup_runs + runs
+    for index in range(total_runs):
         recorder = EventRecorder()
-        try:
-            result = ControlledScheduler(engine, recorder, timeout_seconds).execute(
-                adapter, actors, schedule, exact=False
-            )
-        finally:
-            engine.dispose()
+        result = ControlledScheduler(engine, recorder, timeout_seconds).execute(
+            adapter, actors, schedule, exact=False
+        )
+        if index < warmup_runs:
+            schedule_failures += int(not result.completed)
+            errors += sum(value == "error" for value in result.actor_outcomes.values())
+            if not result.workers_terminated:
+                break
+            continue
+        if measured_start is None:
+            measured_start = time.perf_counter()
         latencies.append(result.elapsed_ms)
         outcome_counts.update(result.actor_outcomes.values())
         errors += sum(value == "error" for value in result.actor_outcomes.values())
@@ -218,16 +226,31 @@ def benchmark_schedule(
             break
         if result.error and "40P01" in result.error:
             deadlocks += 1
-    total_seconds = max(time.perf_counter() - wall_start, 0.000001)
+    total_seconds = max(time.perf_counter() - (measured_start or wall_start), 0.000001)
+    if not latencies:
+        return PerformanceResult(
+            runs=0,
+            outcomes=dict(outcome_counts),
+            errors=errors,
+            schedule_failures=schedule_failures,
+            mean_latency_ms=0,
+            p95_latency_ms=0,
+            throughput_per_second=0,
+            deadlocks=deadlocks,
+            warmup_runs=warmup_runs,
+        )
     sorted_latencies = sorted(latencies)
     p95_index = max(0, math.ceil(0.95 * len(sorted_latencies)) - 1)
     return PerformanceResult(
-        runs=runs,
+        runs=len(latencies),
         outcomes=dict(outcome_counts),
         errors=errors,
         schedule_failures=schedule_failures,
         mean_latency_ms=statistics.fmean(latencies),
         p95_latency_ms=sorted_latencies[p95_index],
-        throughput_per_second=(runs * len(actors)) / total_seconds,
+        throughput_per_second=(len(latencies) * len(actors)) / total_seconds,
         deadlocks=deadlocks,
+        median_latency_ms=statistics.median(latencies),
+        latency_samples_ms=latencies,
+        warmup_runs=warmup_runs,
     )

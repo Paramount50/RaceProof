@@ -28,6 +28,7 @@ class FinalStatus(StrEnum):
     QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
     PROVIDERS_EXHAUSTED = "PROVIDERS_EXHAUSTED"
     MODEL_CONFIGURATION_ERROR = "MODEL_CONFIGURATION_ERROR"
+    INTERRUPTED = "INTERRUPTED"
 
 
 class EventKind(StrEnum):
@@ -317,6 +318,9 @@ class PerformanceResult(BaseModel):
     deadlocks: int = 0
     retries: int = 0
     observed_only: bool = True
+    median_latency_ms: float | None = None
+    latency_samples_ms: list[float] = Field(default_factory=list)
+    warmup_runs: int = 0
 
 
 class VerificationReport(BaseModel):
@@ -350,6 +354,7 @@ class RunReport(BaseModel):
     invariant_name: str
     invariant_description: str
     status: FinalStatus
+    terminal_reason: str = ""
     findings: list[StaticFinding] = Field(default_factory=list)
     investigation_attempts: list[InvestigationAttempt] = Field(default_factory=list)
     investigation_artifact: InvestigationArtifact | None = None
