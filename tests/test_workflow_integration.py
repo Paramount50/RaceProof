@@ -257,6 +257,7 @@ def test_missing_investigation_model_stops_explicitly(tmp_path, database_url) ->
     assert report.status == FinalStatus.MODEL_UNAVAILABLE
     assert report.baseline is None
     assert "Investigation Agent unavailable" in report.limitations[-1]
+    assert (tmp_path / "artifacts" / "runs" / report.run_id / "report.json").is_file()
 
 
 @pytest.mark.parametrize(

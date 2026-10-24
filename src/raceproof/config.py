@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     model_name: str | None = None
     model_max_retries: int = Field(default=2, ge=0, le=5)
     max_retry_wait_seconds: float = Field(default=3.0, ge=0, le=10)
+    max_fallback_duration_seconds: float = Field(default=120.0, gt=0, le=600)
     max_model_requests: int = Field(default=14, ge=1, le=100)
     max_investigation_requests: int = Field(default=6, ge=1, le=50)
     max_repair_requests: int = Field(default=8, ge=1, le=50)

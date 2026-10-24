@@ -185,7 +185,8 @@ function App() {
             <small>Patch: {repairView.application}</small>
             <small>Verification: {repairView.verification}</small>
             <small>Candidate status: {repairView.candidateStatus.replaceAll('_', ' ')}</small>
-            {repairAttempt.failure_reason && <small>Feedback: {repairAttempt.failure_reason}</small>}
+              {report?.terminal_reason && <small>Termination: {report.terminal_reason}</small>}
+              {repairAttempt.failure_reason && <small>Feedback: {repairAttempt.failure_reason}</small>}
           </div>}
           {!repairEvents.length && !repairAttempt && <div className="empty-state"><Code2 size={24}/><p>Repair starts only after a confirmed invariant violation.</p></div>}
         </div>
@@ -199,6 +200,10 @@ function App() {
           <div className={`compare-card after ${verification?.passed ? 'verified' : ''}`}><span>AFTER</span><strong>{verification?.passed ? 'All declared gates passed' : 'Not verified'}</strong><small>{verification ? `${verification.replay_mode} replay` : 'Candidate required'}</small></div>
         </div>
         {verification && <div className="gate-grid">{Object.entries(verification.gates).map(([name, passed]) => <div key={name} className={passed ? 'gate pass' : 'gate fail'}>{passed ? <Check size={13}/> : <X size={13}/>}<span>{name.replaceAll('_', ' ')}</span></div>)}</div>}
+        {verification?.performance && <div className="agent-summary">
+          <small>Performance: {verification.performance.runs} samples, median {verification.performance.median_latency_ms?.toFixed(2) ?? 'n/a'} ms, p95 {verification.performance.p95_latency_ms.toFixed(2)} ms</small>
+          {verification.execution_evidence?.performance_comparison && <small>Baseline p95 {verification.execution_evidence.performance_comparison.baseline_p95_ms?.toFixed(2) ?? 'n/a'} ms · configured limit {verification.execution_evidence.performance_comparison.configured_limit}x · observed ratio {verification.execution_evidence.performance_comparison.regression_ratio?.toFixed(2) ?? 'n/a'}x</small>}
+        </div>}
       </article>
     </section>
 

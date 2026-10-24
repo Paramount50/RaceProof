@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import time
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
@@ -114,6 +115,7 @@ def _invoke_agent(
     openrouter_api_key: str | None = None,
     auto_fallback: bool = False,
     max_retry_wait_seconds: float = 3.0,
+    max_fallback_duration_seconds: float = 120.0,
     message_count: int | None = None,
     context_characters: int | None = None,
     estimated_input_tokens: int | None = None,
@@ -147,11 +149,15 @@ def _invoke_agent(
                 f"Gemini failed with {primary_error.code}; OpenRouter fallback key is not configured"
             ) from primary_error
         if auto_fallback and candidates and openrouter_api_key:
+            fallback_started = time.monotonic()
             last_provider = "gemini"
             last_model = model_name
             last_error: ModelRuntimeError = primary_error
             failures: list[str] = []
             for candidate in candidates:
+                if time.monotonic() - fallback_started >= max_fallback_duration_seconds:
+                    failures.append("fallback duration limit reached")
+                    break
                 try:
                     validate_openrouter_free_model(candidate)
                 except ModelConfigurationError as configuration_error:
@@ -291,6 +297,7 @@ experiment."""
         openrouter_api_key: str | None = None,
         auto_fallback: bool = False,
         max_retry_wait_seconds: float = 3.0,
+        max_fallback_duration_seconds: float = 120.0,
     ) -> None:
         self.model_name = model_name
         self.usage_tracker = usage_tracker or UsageTracker(UsageLimits())
@@ -302,6 +309,7 @@ experiment."""
         self.openrouter_api_key = openrouter_api_key
         self.auto_fallback = auto_fallback
         self.max_retry_wait_seconds = max_retry_wait_seconds
+        self.max_fallback_duration_seconds = max_fallback_duration_seconds
 
     def available(self) -> tuple[bool, str]:
         return _availability(self.model_name, self.api_key)
@@ -421,6 +429,7 @@ experiment."""
             openrouter_api_key=self.openrouter_api_key,
             auto_fallback=self.auto_fallback,
             max_retry_wait_seconds=self.max_retry_wait_seconds,
+            max_fallback_duration_seconds=self.max_fallback_duration_seconds,
         )
         try:
             decision = InvestigationDecision.model_validate(result["structured_response"])
@@ -536,6 +545,7 @@ a strategy that serializes the actual contention key and let deterministic verif
         openrouter_api_key: str | None = None,
         auto_fallback: bool = False,
         max_retry_wait_seconds: float = 3.0,
+        max_fallback_duration_seconds: float = 120.0,
         max_repair_context_tokens: int = 12_000,
     ) -> None:
         self.model_name = model_name
@@ -548,6 +558,7 @@ a strategy that serializes the actual contention key and let deterministic verif
         self.openrouter_api_key = openrouter_api_key
         self.auto_fallback = auto_fallback
         self.max_retry_wait_seconds = max_retry_wait_seconds
+        self.max_fallback_duration_seconds = max_fallback_duration_seconds
         self.max_repair_context_tokens = max_repair_context_tokens
 
     def available(self) -> tuple[bool, str]:
@@ -651,6 +662,7 @@ a strategy that serializes the actual contention key and let deterministic verif
             openrouter_api_key=self.openrouter_api_key,
             auto_fallback=self.auto_fallback,
             max_retry_wait_seconds=self.max_retry_wait_seconds,
+            max_fallback_duration_seconds=self.max_fallback_duration_seconds,
             message_count=2,
             context_characters=context_characters,
             estimated_input_tokens=estimated_input_tokens,

@@ -103,6 +103,7 @@ class RaceProofRunner:
         )
         self.guard = PatchGuard(set(target.config.operation.editable_paths), protected)
         self._history_lock = threading.Lock()
+        self._latest_state: WorkflowState = {}
         self.graph = self._build_graph()
 
     def _attempt_artifact_dir(self, run_id: str, attempt: int) -> Path:
@@ -192,7 +193,12 @@ class RaceProofRunner:
     def _persist(self, run_id: str, node: str, state: WorkflowState) -> None:
         output = self.engine_root / self.settings.artifact_dir / "runs" / run_id
         output.mkdir(parents=True, exist_ok=True)
-        record = {"timestamp": datetime.now(UTC).isoformat(), "node": node, "state": state}
+        self._latest_state = {**self._latest_state, **state, "run_id": run_id}
+        record = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "node": node,
+            "state": state,
+        }
         with (
             self._history_lock,
             (output / "state-history.jsonl").open("a", encoding="utf-8") as stream,
@@ -753,6 +759,19 @@ class RaceProofRunner:
         else:
             failed = [name for name, passed in report.gates.items() if not passed]
             reason = "failed verification gates: " + ", ".join(failed)
+            if report.performance is not None and "performance_within_configured_limit" in failed:
+                performance = report.performance
+                baseline_p95 = state.get("baseline_performance", {}).get("p95_latency_ms")
+                ratio = (
+                    performance.p95_latency_ms / baseline_p95
+                    if baseline_p95
+                    else None
+                )
+                reason += (
+                    f"; baseline_p95_ms={baseline_p95}; "
+                    f"candidate_p95_ms={performance.p95_latency_ms}; "
+                    f"regression_ratio={ratio}; samples={performance.runs}"
+                )
             attempts[-1]["failure_reason"] = reason
             diff = ""
             status = (
@@ -810,22 +829,16 @@ class RaceProofRunner:
         graph.add_edge("finalize", END)
         return graph.compile(checkpointer=InMemorySaver())
 
-    def run(self, run_id: str | None = None) -> RunReport:
-        run_id = run_id or uuid.uuid4().hex[:12]
-        started_at = datetime.now(UTC)
-        initial: WorkflowState = {
-            "run_id": run_id,
-            "status": FinalStatus.SUSPECTED.value,
-            "investigation_attempts": [],
-            "attempts": [],
-            "attempt_number": 0,
-        }
-        final = self.graph.invoke(
-            initial,
-            config={"configurable": {"thread_id": run_id}, "recursion_limit": 40},
-        )
+    def _build_report(
+        self,
+        state: WorkflowState,
+        run_id: str,
+        started_at: datetime,
+        status: FinalStatus | None = None,
+    ) -> RunReport:
         config = self.target.config
-        report = RunReport(
+        final_status = status or FinalStatus(state.get("status", FinalStatus.EXECUTION_ERROR.value))
+        return RunReport(
             run_id=run_id,
             started_at=started_at,
             finished_at=datetime.now(UTC),
@@ -834,19 +847,20 @@ class RaceProofRunner:
             target_operation=config.operation.callable,
             invariant_name=config.invariant.name,
             invariant_description=config.invariant.description,
-            status=FinalStatus(final["status"]),
-            findings=final.get("findings", []),
-            investigation_attempts=final.get("investigation_attempts", []),
-            investigation_artifact=final.get("investigation_artifact"),
-            baseline=final.get("baseline"),
-            attempts=final.get("attempts", []),
-            final_diff=final.get("final_diff") or None,
+            status=final_status,
+            terminal_reason=state.get("terminal_reason", ""),
+            findings=state.get("findings", []),
+            investigation_attempts=state.get("investigation_attempts", []),
+            investigation_artifact=state.get("investigation_artifact"),
+            baseline=state.get("baseline"),
+            attempts=state.get("attempts", []),
+            final_diff=state.get("final_diff") or None,
             events=self.recorder.snapshot(),
             limitations=[
                 *config.limitations,
                 "Investigation and repair reasoning require configured LLM access.",
                 "Verification covers named finite schedules and is not a proof of race freedom.",
-                final.get("terminal_reason", ""),
+                state.get("terminal_reason", ""),
             ],
             investigation_model=self.settings.resolved_investigation_model,
             repair_model=self.settings.resolved_repair_model,
@@ -858,9 +872,43 @@ class RaceProofRunner:
             openrouter_repair_models=self.settings.openrouter_repair_model_list,
             usage=self.usage_tracker.snapshot(),
         )
-        output = self.engine_root / self.settings.artifact_dir / "runs" / run_id
+
+    def _write_report(self, report: RunReport) -> None:
+        output = self.engine_root / self.settings.artifact_dir / "runs" / report.run_id
         output.mkdir(parents=True, exist_ok=True)
         (output / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
         if report.final_diff:
             (output / "candidate.diff").write_text(report.final_diff, encoding="utf-8")
+
+    def run(self, run_id: str | None = None) -> RunReport:
+        run_id = run_id or uuid.uuid4().hex[:12]
+        started_at = datetime.now(UTC)
+        initial: WorkflowState = {
+            "run_id": run_id,
+            "status": FinalStatus.SUSPECTED.value,
+            "investigation_attempts": [],
+            "attempts": [],
+            "attempt_number": 0,
+        }
+        self._latest_state = initial
+        try:
+            final = self.graph.invoke(
+                initial,
+                config={"configurable": {"thread_id": run_id}, "recursion_limit": 40},
+            )
+            report = self._build_report(final, run_id, started_at)
+        except KeyboardInterrupt:
+            state = {
+                **self._latest_state,
+                "status": FinalStatus.INTERRUPTED.value,
+                "terminal_reason": "Run interrupted by operator",
+            }
+            self._persist(run_id, "interrupted", state)
+            report = self._build_report(state, run_id, started_at, FinalStatus.INTERRUPTED)
+        except Exception as exc:  # noqa: BLE001 - persist handled workflow failures
+            failure = self._model_failure(exc, "Workflow failed")
+            state = {**self._latest_state, **failure}
+            self._persist(run_id, "workflow_error", state)
+            report = self._build_report(state, run_id, started_at)
+        self._write_report(report)
         return report

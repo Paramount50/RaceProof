@@ -28,6 +28,7 @@ export type Target = {
 export type ScheduleResult = {
   schedule_name: string
   status: string
+  terminal_reason?: string
   exact: boolean
   completed: boolean
   reproduced_failure: boolean
@@ -43,16 +44,31 @@ export type Verification = {
   replay_mode: string
   gates: Record<string, boolean>
   performance?: {
+    runs: number
     mean_latency_ms: number
+    median_latency_ms?: number | null
     p95_latency_ms: number
     throughput_per_second: number
     deadlocks: number
+    latency_samples_ms?: number[]
+    warmup_runs?: number
+  }
+  execution_evidence?: {
+    performance_comparison?: {
+      baseline_p95_ms: number | null
+      candidate_p95_ms: number | null
+      regression_ratio: number | null
+      configured_limit: number
+      candidate_samples: number[]
+      candidate_median_ms: number | null
+    }
   }
 }
 
 export type RunReport = {
   run_id: string
   status: string
+  terminal_reason?: string
   target_id: string
   target_name: string
   target_operation: string

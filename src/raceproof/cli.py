@@ -152,6 +152,7 @@ def main() -> int:
         "openrouter_api_key": settings.openrouter_api_key_value,
         "auto_fallback": settings.auto_fallback,
         "max_retry_wait_seconds": settings.max_retry_wait_seconds,
+        "max_fallback_duration_seconds": settings.max_fallback_duration_seconds,
     }
     investigation_agent = GeminiInvestigationAgent(
         settings.resolved_investigation_model,
