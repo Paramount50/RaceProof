@@ -4,13 +4,14 @@ import {
   Code2, Database, GitCompare, Loader2, LockKeyhole, Play, ShieldCheck,
   TerminalSquare, X, Gauge,
 } from 'lucide-react'
-import type { InvariantResult, ModelStatus, ReviewDecision, ReviewState, RunEvent, RunReport, Target } from './types'
+import type { ExternalProject, InvariantResult, ModelStatus, ReviewDecision, ReviewState, RunEvent, RunReport, Target } from './types'
 import { normalizeUsage } from './usage'
 import { deriveStageStates } from './progress'
 import { describeRepairAttempt } from './repairView'
 import { isTerminalStatus, normalizeStatus, statusLabel, statusTone } from './status'
 import { DatabaseBehaviorComparison, LangSmithPanel, LockWaitPanel, SchedulePlayer, StageDurationPanel } from './EvidencePanels'
 import { ReviewPanel } from './ReviewPanel'
+import { ProjectSourcePanel } from './ProjectSourcePanel'
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const stages = ['load_target', 'inspect', 'investigate', 'execute_experiment', 'observe', 'repair', 'apply_patch', 'verify', 'finalize']
@@ -39,14 +40,76 @@ function App() {
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [reviewer, setReviewer] = useState('human-reviewer')
   const [reviewComment, setReviewComment] = useState('')
+  const [externalProject, setExternalProject] = useState<ExternalProject | null>(null)
+  const [projectLoading, setProjectLoading] = useState(false)
+  const [projectError, setProjectError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`${API}/api/health`).then(r => r.json()).then(data => setHealth(data.postgresql)).catch(() => setHealth(false))
     fetch(`${API}/api/model-status`).then(r => r.json()).then(setModelStatus).catch(() => setModelStatus(null))
+    fetch(`${API}/api/projects/active`).then(r => r.json()).then(setExternalProject).catch(() => setProjectError('Could not load external project state.'))
     fetch(`${API}/api/targets`).then(r => r.json()).then((data: Target[]) => {
       setTargets(data); setTargetId(current => current || data[0]?.id || '')
     }).catch(() => setError('Could not load target applications.'))
   }, [])
+
+  function clearRunSelection() {
+    setRunId(null); setEvents([]); setReport(null); setStatus('READY'); setError(null)
+    setReviewState(null); setReviewError(null); setReviewComment('')
+  }
+
+  async function connectLocalProject(path: string, name: string | null) {
+    setProjectLoading(true); setProjectError(null)
+    try {
+      const response = await fetch(`${API}/api/projects/local`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, name, authorized: true }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail ?? 'Could not connect local project.')
+      clearRunSelection(); setExternalProject(data as ExternalProject)
+    } catch (projectFailure) {
+      setProjectError(projectFailure instanceof Error ? projectFailure.message : 'Could not connect local project.')
+    } finally {
+      setProjectLoading(false)
+    }
+  }
+
+  async function uploadExternalProject(files: File[], name: string | null) {
+    setProjectLoading(true); setProjectError(null)
+    try {
+      const body = new FormData()
+      files.forEach(file => body.append('files', file))
+      if (name) body.append('project_name', name)
+      const response = await fetch(`${API}/api/projects/upload`, { method: 'POST', body })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail ?? 'Could not import uploaded project.')
+      clearRunSelection(); setExternalProject(data as ExternalProject)
+    } catch (projectFailure) {
+      setProjectError(projectFailure instanceof Error ? projectFailure.message : 'Could not import uploaded project.')
+    } finally {
+      setProjectLoading(false)
+    }
+  }
+
+  async function removeExternalProject() {
+    if (!externalProject) return true
+    const label = externalProject.source === 'upload' ? 'remove the isolated uploaded files' : 'disconnect the local folder'
+    if (!window.confirm(`Confirm that RaceProof should ${label}?`)) return false
+    setProjectLoading(true); setProjectError(null)
+    try {
+      const response = await fetch(`${API}/api/projects/${externalProject.id}`, { method: 'DELETE' })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail ?? 'Could not remove external project.')
+      setExternalProject(null); clearRunSelection()
+      return true
+    } catch (projectFailure) {
+      setProjectError(projectFailure instanceof Error ? projectFailure.message : 'Could not remove external project.')
+      return false
+    } finally {
+      setProjectLoading(false)
+    }
+  }
 
   async function loadReview(id: string) {
     setReviewLoading(true); setReviewError(null)
@@ -88,6 +151,7 @@ function App() {
   }
 
   async function startRun() {
+    if (externalProject) throw new Error('External projects remain inspection-only until their target contract is approved.')
     setError(null); setEvents([]); setReport(null); setReviewState(null); setReviewError(null); setReviewComment(''); setStatus('QUEUED')
     const response = await fetch(`${API}/api/runs`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -145,13 +209,15 @@ function App() {
     <header className="topbar">
       <div className="brand"><div className="brand-mark"><LockKeyhole size={18} /></div><div><strong>RaceProof</strong><span>Concurrency lab</span></div></div>
       <div className="connection"><span className={`pulse ${health ? 'online' : ''}`} /> PostgreSQL {health === null ? 'checking' : health ? 'connected' : 'offline'}</div>
-      <div className="header-actions"><select value={targetId} onChange={event => setTargetId(event.target.value)} disabled={busy}>{targets.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><StatusPill status={status} /><button className="run-button" onClick={() => startRun().catch(e => setError(e.message))} disabled={busy || health === false || !targetId}>{busy ? <Loader2 size={16} className="spin" /> : <Play size={15} fill="currentColor" />}Run investigation</button></div>
+      <div className="header-actions"><select value={targetId} onChange={event => setTargetId(event.target.value)} disabled={busy}>{targets.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><StatusPill status={status} /><button className="run-button" onClick={() => startRun().catch(e => setError(e.message))} disabled={busy || health === false || !targetId || Boolean(externalProject)}>{busy ? <Loader2 size={16} className="spin" /> : <Play size={15} fill="currentColor" />}Run investigation</button></div>
     </header>
 
     <section className="hero">
       <div><div className="eyebrow">LIVE EXPERIMENT · {target?.name.toUpperCase() ?? 'SELECT A TARGET'}</div><h1>Make the invisible<br/><em>interleaving</em> visible.</h1><p>{target?.description ?? 'Controlled PostgreSQL transactions. Executable business invariants. Model-authored patches behind deterministic gates.'}</p></div>
       <div className="hero-side"><Metric label="Operation" value={target?.operation.split(':').at(-1) ?? '-'}/><Metric label="Actors" value={actors.join(' + ') || '-'}/><Metric label="SQL events" value={sqlCount.toString().padStart(2, '0')} accent/></div>
     </section>
+
+    <ProjectSourcePanel project={externalProject} loading={projectLoading} error={projectError} onConnectLocal={connectLocalProject} onUpload={uploadExternalProject} onRemove={removeExternalProject}/>
 
     {error && <div className="error-banner"><AlertTriangle size={17}/><span>{error}</span></div>}
 

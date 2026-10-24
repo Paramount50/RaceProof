@@ -198,12 +198,12 @@ class ExternalProjectManager:
                 (name or Path(uploads[0][0]).stem or "uploaded-project").strip(),
                 project_id=project_id,
             )
+            self._activate(project)
         except Exception:
             self._remove_owned_workspace(temporary)
             if published:
                 self._remove_owned_workspace(destination)
             raise
-        self._activate(project)
         return project
 
     def _extract_zip(self, root: Path, payload: bytes, written: set[str]) -> None:
@@ -357,6 +357,10 @@ class ExternalProjectManager:
 
     def _activate(self, project: ExternalProject) -> None:
         with self._lock:
+            if self._active_project_id is not None:
+                raise ExternalProjectError(
+                    "remove the active external project before selecting another one"
+                )
             self._projects[project.id] = project
             self._active_project_id = project.id
 

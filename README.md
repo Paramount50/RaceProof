@@ -96,6 +96,12 @@ LangSmith tracing is disabled by default and is not required for investigation, 
 
 RaceProof permits metadata-only tracing. `LANGSMITH_HIDE_INPUTS` and `LANGSMITH_HIDE_OUTPUTS` must both remain `true`; otherwise tracing stays disabled. Traces may contain run IDs, stage durations, provider and model identifiers, request and token counts, retry and fallback counts, error categories, and verification gate outcomes. They do not intentionally export source files, SQL parameters, schemas, model prompts, generated patches, credentials, or connection strings. Local JSONL history, `report.json`, usage accounting, SQL evidence, and verification reports remain authoritative. A tracing initialization or export failure does not change the RaceProof result.
 
+### External project inspection
+
+Built-in examples remain the default. External projects are inspection-only until a complete target adapter, approved invariant, actor inputs, schedule, and separate disposable PostgreSQL experiment database are validated. Static findings are hypotheses and never produce `VERIFIED_CANDIDATE` without the existing execution and verification workflow.
+
+Local folder inspection is disabled by default. Set `RACEPROOF_EXTERNAL_PROJECT_ROOTS` to a list of authorized roots separated by the operating-system path separator, restart FastAPI, then explicitly authorize a contained folder in the dashboard. RaceProof reads supported Python files without importing or executing them. Uploaded Python files and ZIP archives are copied under `artifacts/imports`, bounded by the configured upload, extraction, file-count, and per-source limits, and removed only through the project removal action.
+
 If Docker is unavailable on Windows and PostgreSQL 17 is installed:
 
 ```powershell
@@ -188,6 +194,10 @@ The dashboard fetches generic target metadata and sends only a selected `target_
 - `GET /api/targets`: list validated registered targets.
 - `GET /api/health`: report service and PostgreSQL status.
 - `GET /api/model-status`: report model IDs, local budgets, fallback state, and only whether a key is configured.
+- `GET /api/projects/active`: return the active imported project or `null`.
+- `POST /api/projects/local`: authorize and inspect a folder contained by a configured local root.
+- `POST /api/projects/upload`: import and inspect bounded `.py` files or a ZIP archive.
+- `DELETE /api/projects/{project_id}`: disconnect a local folder or remove its owned upload workspace.
 - `POST /api/runs`: start `{ "target_id": "inventory_oversell" }`.
 - `GET /api/runs/{run_id}`: status, events, and report.
 - `GET /api/runs/{run_id}/events`: Server-Sent Events stream.
@@ -215,6 +225,7 @@ Runs write to the engine artifact root:
 - `artifacts/runs/<run_id>/state-history.jsonl`
 - `artifacts/runs/<run_id>/report.json`
 - `artifacts/runs/<run_id>/review.json` only after an immutable human decision
+- `artifacts/imports/<project_id>/` for isolated uploaded source files
 - `artifacts/runs/<run_id>/candidate.diff` only for a verified candidate
 - `artifacts/runs/<run_id>/attempts/attempt-N/model-proposal.json`
 - `artifacts/runs/<run_id>/attempts/attempt-N/generated.diff`

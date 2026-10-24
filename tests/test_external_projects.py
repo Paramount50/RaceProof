@@ -170,6 +170,17 @@ def test_remove_refuses_project_with_active_run(tmp_path: Path) -> None:
     assert Path(project.root_path).is_dir()
 
 
+def test_new_import_requires_removing_active_project_first(tmp_path: Path) -> None:
+    manager = manager_for(tmp_path)
+    first = manager.import_uploads([("first.py", b"value = 1\n")])
+
+    with pytest.raises(ExternalProjectError, match="remove the active"):
+        manager.import_uploads([("second.py", b"value = 2\n")])
+
+    assert manager.active() == first
+    assert sorted(path.name for path in manager.upload_root.iterdir()) == [first.id]
+
+
 def test_remove_project_api_clears_active_selection(tmp_path: Path, monkeypatch) -> None:
     manager = manager_for(tmp_path)
     project = manager.import_uploads([("operation.py", SUSPICIOUS_SOURCE.encode())])

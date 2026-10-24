@@ -25,6 +25,32 @@ export type Target = {
   invariant: { name: string; description: string; approved: true }
 }
 
+export type StaticFinding = {
+  file: string
+  line_start: number
+  line_end: number
+  function: string | null
+  severity: string
+  signals: string[]
+  explanation: string
+}
+
+export type ExternalProject = {
+  id: string
+  name: string
+  source: 'local' | 'upload'
+  root_path: string
+  files_discovered: number
+  supported_files: string[]
+  findings: StaticFinding[]
+  warnings: string[]
+  sqlalchemy_detected: boolean
+  postgresql_configuration_detected: boolean
+  onboarding_state: string
+  ready_for_experiment: boolean
+  missing_requirements: string[]
+}
+
 export type ReviewDecision = 'APPROVED' | 'REJECTED'
 
 export type ReviewRecord = {
