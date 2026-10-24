@@ -37,12 +37,34 @@ export type ScheduleResult = {
   invariant: InvariantResult | null
   elapsed_ms: number
   error: string | null
+  workers_terminated: boolean
+  lock_observation_status: 'not_requested' | 'available' | 'unavailable'
+  lock_observation_error: string | null
+  lock_waits: Array<{
+    waiting_actor: string
+    blocking_actors: string[]
+    lock_type: string
+    lock_mode: string
+    relation: string | null
+    duration_ms: number
+    release_points: string[]
+  }>
+  wait_for_edges: Array<{
+    waiting_actor: string
+    blocking_actor: string
+    lock_type: string
+    lock_mode: string
+    relation: string | null
+  }>
+  deadlock_cycle: boolean
 }
 
 export type Verification = {
   passed: boolean
   replay_mode: string
   gates: Record<string, boolean>
+  schedule_results: ScheduleResult[]
+  lock_evidence_results: ScheduleResult[]
   performance?: {
     runs: number
     mean_latency_ms: number
@@ -94,6 +116,7 @@ export type RunReport = {
   } | null
   baseline: ScheduleResult | null
   final_diff: string | null
+  stage_timings_ms: Record<string, number>
   attempts: Array<{
     number: number
     proposal?: {

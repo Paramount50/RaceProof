@@ -21,6 +21,7 @@ from raceproof.contracts import (
     InvestigationAttempt,
     InvestigationContext,
     RepairAttempt,
+    RunEvent,
     RunReport,
     ScheduleSpec,
 )
@@ -67,6 +68,25 @@ class WorkflowState(TypedDict, total=False):
     candidate_diff: str
     final_diff: str
     terminal_reason: str
+
+
+def stage_timings_ms(events: list[RunEvent], finished_at: datetime) -> dict[str, float]:
+    starts: dict[str, datetime] = {}
+    totals: dict[str, float] = {}
+    terminal_states = {"SUCCEEDED", "FAILED", "RETRYING", "SKIPPED"}
+    for event in sorted(events, key=lambda item: item.sequence):
+        if event.kind != EventKind.STAGE:
+            continue
+        status = str(event.detail.get("status", ""))
+        if status == "RUNNING":
+            starts.setdefault(event.stage, event.timestamp)
+        elif status in terminal_states and event.stage in starts:
+            elapsed = max(0.0, (event.timestamp - starts.pop(event.stage)).total_seconds() * 1000)
+            totals[event.stage] = totals.get(event.stage, 0.0) + elapsed
+    for stage, started_at in starts.items():
+        elapsed = max(0.0, (finished_at - started_at).total_seconds() * 1000)
+        totals[stage] = totals.get(stage, 0.0) + elapsed
+    return {stage: round(duration, 2) for stage, duration in totals.items()}
 
 
 class RaceProofRunner:
@@ -838,10 +858,12 @@ class RaceProofRunner:
     ) -> RunReport:
         config = self.target.config
         final_status = status or FinalStatus(state.get("status", FinalStatus.EXECUTION_ERROR.value))
+        finished_at = datetime.now(UTC)
+        events = self.recorder.snapshot()
         return RunReport(
             run_id=run_id,
             started_at=started_at,
-            finished_at=datetime.now(UTC),
+            finished_at=finished_at,
             target_id=config.id,
             target_name=config.name,
             target_operation=config.operation.callable,
@@ -855,7 +877,8 @@ class RaceProofRunner:
             baseline=state.get("baseline"),
             attempts=state.get("attempts", []),
             final_diff=state.get("final_diff") or None,
-            events=self.recorder.snapshot(),
+            events=events,
+            stage_timings_ms=stage_timings_ms(events, finished_at),
             limitations=[
                 *config.limitations,
                 "Investigation and repair reasoning require configured LLM access.",

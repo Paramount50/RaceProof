@@ -9,6 +9,7 @@ import { normalizeUsage } from './usage'
 import { deriveStageStates } from './progress'
 import { describeRepairAttempt } from './repairView'
 import { isTerminalStatus, normalizeStatus, statusLabel, statusTone } from './status'
+import { DatabaseBehaviorComparison, LockWaitPanel, SchedulePlayer, StageDurationPanel } from './EvidencePanels'
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const stages = ['load_target', 'inspect', 'investigate', 'execute_experiment', 'observe', 'repair', 'apply_patch', 'verify', 'finalize']
@@ -75,6 +76,10 @@ function App() {
   const invariantEvent = [...events].reverse().find(event => event.kind === 'invariant')
   const invariant = baseline?.invariant ?? (invariantEvent?.detail as unknown as InvariantResult | undefined)
   const verification = report?.attempts?.at(-1)?.verification
+  const verifiedSchedule = verification?.schedule_results?.[0]
+  const lockEvidence = verification?.lock_evidence_results?.find(result => result.lock_waits.length || result.wait_for_edges.length)
+    ?? verification?.lock_evidence_results?.[0]
+    ?? verifiedSchedule
   const investigation = report?.investigation_attempts?.at(-1)
   const repairAttempt = report?.attempts?.at(-1)
   const repairView = describeRepairAttempt(repairAttempt, report?.status ?? status)
@@ -205,6 +210,13 @@ function App() {
           {verification.execution_evidence?.performance_comparison && <small>Baseline p95 {verification.execution_evidence.performance_comparison.baseline_p95_ms?.toFixed(2) ?? 'n/a'} ms · configured limit {verification.execution_evidence.performance_comparison.configured_limit}x · observed ratio {verification.execution_evidence.performance_comparison.regression_ratio?.toFixed(2) ?? 'n/a'}x</small>}
         </div>}
       </article>
+    </section>
+
+    <section className="evidence-feature-grid">
+      <SchedulePlayer events={baseline?.events ?? events} actors={actors}/>
+      <DatabaseBehaviorComparison before={baseline} after={verifiedSchedule}/>
+      <LockWaitPanel result={lockEvidence}/>
+      <StageDurationPanel timings={report?.stage_timings_ms ?? {}}/>
     </section>
 
     <section className="panel diff-panel">
