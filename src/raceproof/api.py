@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -11,6 +12,11 @@ from sqlalchemy import text
 
 from raceproof.config import get_settings
 from raceproof.database import create_database_engine
+from raceproof.external_projects import (
+    ExternalProject,
+    ExternalProjectError,
+    ExternalProjectManager,
+)
 from raceproof.report_store import InvalidReportArtifact, InvalidRunId, ReportStore
 from raceproof.review_store import (
     InvalidReviewArtifact,
@@ -33,9 +39,16 @@ class StartRunRequest(BaseModel):
     target_id: str
 
 
+class ConnectLocalProjectRequest(BaseModel):
+    path: str
+    authorized: Literal[True]
+    name: str | None = None
+
+
 repository_root = Path(__file__).resolve().parents[2]
 service = RunService(repository_root)
 registry = TargetRegistry(repository_root / "examples")
+project_manager = ExternalProjectManager(repository_root, get_settings())
 app = FastAPI(title="RaceProof API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -115,6 +128,41 @@ def list_targets() -> list[dict[str, object]]:
         }
         for target in registry.list()
     ]
+
+
+@app.get("/api/projects/active", response_model=ExternalProject | None)
+def get_active_project() -> ExternalProject | None:
+    return project_manager.active()
+
+
+@app.post("/api/projects/local", response_model=ExternalProject, status_code=201)
+def connect_local_project(request: ConnectLocalProjectRequest) -> ExternalProject:
+    try:
+        return project_manager.connect_local(request.path, request.name)
+    except ExternalProjectError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/upload", response_model=ExternalProject, status_code=201)
+async def upload_project(
+    files: Annotated[list[UploadFile], File()],
+    project_name: Annotated[str | None, Form()] = None,
+) -> ExternalProject:
+    if len(files) > 50:
+        raise HTTPException(status_code=422, detail="too many uploaded files")
+    uploads: list[tuple[str, bytes]] = []
+    total = 0
+    for upload in files:
+        remaining = project_manager.upload_max_bytes - total
+        payload = await upload.read(remaining + 1)
+        total += len(payload)
+        if total > project_manager.upload_max_bytes:
+            raise HTTPException(status_code=413, detail="upload exceeds the configured size limit")
+        uploads.append((upload.filename or "upload", payload))
+    try:
+        return project_manager.import_uploads(uploads, project_name)
+    except ExternalProjectError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/runs/{run_id}")

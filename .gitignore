@@ -8,6 +8,7 @@ htmlcov/
 .raceproof/
 .raceproof-pg/
 artifacts/
+.raceproof-imports/
 frontend/node_modules/
 frontend/dist/
 
