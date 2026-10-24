@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raceproof"
+version = "0.1.0"
+description = "Evidence-driven PostgreSQL concurrency investigation and bounded repair prototype"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "sqlalchemy>=2.0.36,<2.1",
+  "psycopg[binary]>=3.2,<4",
+  "langchain>=1.0,<2",
+  "langgraph>=1.0,<2",
+]
+
+[project.optional-dependencies]
+gemini = ["langchain-google-genai>=4.4,<5"]
+openrouter = ["langchain-openai>=1.0,<2"]
+dev = ["pytest>=8.3,<10", "pytest-cov>=6,<8", "httpx>=0.28,<1", "ruff>=0.9,<1"]
+
+[project.scripts]
+raceproof = "raceproof.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires an isolated PostgreSQL database"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
