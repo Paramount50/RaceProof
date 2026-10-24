@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,12 +40,6 @@ from raceproof.target import TargetConfigurationError, TargetRegistry
 
 class StartRunRequest(BaseModel):
     target_id: str
-
-
-class ConnectLocalProjectRequest(BaseModel):
-    path: str
-    authorized: Literal[True]
-    name: str | None = None
 
 
 repository_root = Path(__file__).resolve().parents[2]
@@ -136,14 +130,6 @@ def list_targets() -> list[dict[str, object]]:
 @app.get("/api/projects/active", response_model=ExternalProject | None)
 def get_active_project() -> ExternalProject | None:
     return project_manager.active()
-
-
-@app.post("/api/projects/local", response_model=ExternalProject, status_code=201)
-def connect_local_project(request: ConnectLocalProjectRequest) -> ExternalProject:
-    try:
-        return project_manager.connect_local(request.path, request.name)
-    except ExternalProjectError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/projects/upload", response_model=ExternalProject, status_code=201)

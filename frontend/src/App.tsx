@@ -33,6 +33,8 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [targets, setTargets] = useState<Target[]>([])
   const [targetId, setTargetId] = useState('')
+  const [targetsLoading, setTargetsLoading] = useState(true)
+  const [targetError, setTargetError] = useState<string | null>(null)
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null)
   const [reviewState, setReviewState] = useState<ReviewState | null>(null)
   const [reviewLoading, setReviewLoading] = useState(false)
@@ -48,31 +50,17 @@ function App() {
     fetch(`${API}/api/health`).then(r => r.json()).then(data => setHealth(data.postgresql)).catch(() => setHealth(false))
     fetch(`${API}/api/model-status`).then(r => r.json()).then(setModelStatus).catch(() => setModelStatus(null))
     fetch(`${API}/api/projects/active`).then(r => r.json()).then(setExternalProject).catch(() => setProjectError('Could not load external project state.'))
-    fetch(`${API}/api/targets`).then(r => r.json()).then((data: Target[]) => {
-      setTargets(data); setTargetId(current => current || data[0]?.id || '')
-    }).catch(() => setError('Could not load target applications.'))
+    fetch(`${API}/api/targets`).then(async response => {
+      if (!response.ok) throw new Error(`Target API returned ${response.status}`)
+      const data = await response.json() as Target[]
+      if (!Array.isArray(data) || !data.length) throw new Error('No built-in examples were returned')
+      setTargets(data); setTargetId(current => current || data[0].id)
+    }).catch(() => setTargetError('Built-in examples are unavailable. Start or restart the FastAPI backend.')).finally(() => setTargetsLoading(false))
   }, [])
 
   function clearRunSelection() {
     setRunId(null); setEvents([]); setReport(null); setStatus('READY'); setError(null)
     setReviewState(null); setReviewError(null); setReviewComment('')
-  }
-
-  async function connectLocalProject(path: string, name: string | null) {
-    setProjectLoading(true); setProjectError(null)
-    try {
-      const response = await fetch(`${API}/api/projects/local`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, name, authorized: true }),
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.detail ?? 'Could not connect local project.')
-      clearRunSelection(); setExternalProject(data as ExternalProject)
-    } catch (projectFailure) {
-      setProjectError(projectFailure instanceof Error ? projectFailure.message : 'Could not connect local project.')
-    } finally {
-      setProjectLoading(false)
-    }
   }
 
   async function uploadExternalProject(files: File[], name: string | null) {
@@ -94,8 +82,7 @@ function App() {
 
   async function removeExternalProject() {
     if (!externalProject) return true
-    const label = externalProject.source === 'upload' ? 'remove the isolated uploaded files' : 'disconnect the local folder'
-    if (!window.confirm(`Confirm that RaceProof should ${label}?`)) return false
+    if (!window.confirm('Confirm that RaceProof should remove the isolated uploaded files?')) return false
     setProjectLoading(true); setProjectError(null)
     try {
       const response = await fetch(`${API}/api/projects/${externalProject.id}`, { method: 'DELETE' })
@@ -209,7 +196,7 @@ function App() {
     <header className="topbar">
       <div className="brand"><div className="brand-mark"><LockKeyhole size={18} /></div><div><strong>RaceProof</strong><span>Concurrency lab</span></div></div>
       <div className="connection"><span className={`pulse ${health ? 'online' : ''}`} /> PostgreSQL {health === null ? 'checking' : health ? 'connected' : 'offline'}</div>
-      <div className="header-actions"><select value={targetId} onChange={event => setTargetId(event.target.value)} disabled={busy}>{targets.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><StatusPill status={status} /><button className="run-button" onClick={() => startRun().catch(e => setError(e.message))} disabled={busy || health === false || !targetId || Boolean(externalProject)}>{busy ? <Loader2 size={16} className="spin" /> : <Play size={15} fill="currentColor" />}Run investigation</button></div>
+      <div className="header-actions"><select aria-label="Built-in example" value={targetId} onChange={event => setTargetId(event.target.value)} disabled={busy || targetsLoading || Boolean(targetError)}><option value="">{targetsLoading ? 'Loading built-in examples...' : targetError ? 'Built-in examples unavailable' : 'Choose a built-in example'}</option>{targets.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><StatusPill status={status} /><button className="run-button" onClick={() => startRun().catch(e => setError(e.message))} disabled={busy || health === false || !targetId || Boolean(externalProject) || Boolean(targetError)}>{busy ? <Loader2 size={16} className="spin" /> : <Play size={15} fill="currentColor" />}Run investigation</button></div>
     </header>
 
     <section className="hero">
@@ -217,7 +204,7 @@ function App() {
       <div className="hero-side"><Metric label="Operation" value={target?.operation.split(':').at(-1) ?? '-'}/><Metric label="Actors" value={actors.join(' + ') || '-'}/><Metric label="SQL events" value={sqlCount.toString().padStart(2, '0')} accent/></div>
     </section>
 
-    <ProjectSourcePanel project={externalProject} loading={projectLoading} error={projectError} onConnectLocal={connectLocalProject} onUpload={uploadExternalProject} onRemove={removeExternalProject}/>
+    <ProjectSourcePanel project={externalProject} loading={projectLoading} error={projectError ?? targetError} onUpload={uploadExternalProject} onRemove={removeExternalProject}/>
 
     {error && <div className="error-banner"><AlertTriangle size={17}/><span>{error}</span></div>}
 

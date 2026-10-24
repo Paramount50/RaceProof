@@ -4,7 +4,6 @@ import { ProjectSourcePanel } from './ProjectSourcePanel'
 import type { ExternalProject } from './types'
 
 const handlers = {
-  onConnectLocal: async () => undefined,
   onUpload: async () => undefined,
   onRemove: async () => true,
 }

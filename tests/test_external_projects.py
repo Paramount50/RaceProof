@@ -22,13 +22,12 @@ def reserve(session: Session, item_id: int):
 """
 
 
-def manager_for(tmp_path: Path, allowed_root: Path | None = None) -> ExternalProjectManager:
+def manager_for(tmp_path: Path) -> ExternalProjectManager:
     return ExternalProjectManager(
         tmp_path,
         Settings(
             _env_file=None,
             artifact_dir=tmp_path / "artifacts",
-            external_project_roots=str(allowed_root) if allowed_root else "",
             external_upload_max_bytes=1024 * 1024,
             external_extracted_max_bytes=2 * 1024 * 1024,
             external_source_max_bytes=256 * 1024,
@@ -42,37 +41,6 @@ def zip_payload(entries: dict[str, str]) -> bytes:
         for name, content in entries.items():
             archive.writestr(name, content)
     return output.getvalue()
-
-
-def test_local_project_requires_configured_authorized_root_and_only_scans(tmp_path: Path) -> None:
-    allowed = tmp_path / "allowed"
-    project_root = allowed / "demo"
-    project_root.mkdir(parents=True)
-    source = project_root / "operations.py"
-    source.write_text("raise RuntimeError('must not execute')\n" + SUSPICIOUS_SOURCE, encoding="utf-8")
-    source_before = source.read_bytes()
-    ignored = project_root / ".venv"
-    ignored.mkdir()
-    (ignored / "ignored.py").write_text(SUSPICIOUS_SOURCE, encoding="utf-8")
-
-    project = manager_for(tmp_path, allowed).connect_local(str(project_root))
-
-    assert project.source == "local"
-    assert project.supported_files == ["operations.py"]
-    assert project.findings[0].function == "reserve"
-    assert project.ready_for_experiment is False
-    assert source.read_bytes() == source_before
-
-
-def test_local_project_rejects_path_outside_authorized_roots(tmp_path: Path) -> None:
-    allowed = tmp_path / "allowed"
-    outside = tmp_path / "outside"
-    allowed.mkdir()
-    outside.mkdir()
-    (outside / "app.py").write_text(SUSPICIOUS_SOURCE, encoding="utf-8")
-
-    with pytest.raises(ExternalProjectError, match="outside"):
-        manager_for(tmp_path, allowed).connect_local(str(outside))
 
 
 def test_upload_imports_python_and_zip_into_isolated_workspace(tmp_path: Path) -> None:
@@ -141,21 +109,6 @@ def test_remove_upload_deletes_only_owned_workspace_and_returns_to_examples(
     assert result["workspace_removed"] is True
     assert not workspace.exists()
     assert unrelated.read_text(encoding="utf-8") == "keep"
-    assert manager.active() is None
-
-
-def test_disconnect_local_project_never_deletes_original_files(tmp_path: Path) -> None:
-    allowed = tmp_path / "allowed"
-    allowed.mkdir()
-    source = allowed / "operation.py"
-    source.write_text(SUSPICIOUS_SOURCE, encoding="utf-8")
-    manager = manager_for(tmp_path, allowed)
-    project = manager.connect_local(str(allowed))
-
-    result = manager.remove(project.id)
-
-    assert result["workspace_removed"] is False
-    assert source.is_file()
     assert manager.active() is None
 
 

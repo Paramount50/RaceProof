@@ -38,7 +38,7 @@ export type StaticFinding = {
 export type ExternalProject = {
   id: string
   name: string
-  source: 'local' | 'upload'
+  source: 'upload'
   root_path: string
   files_discovered: number
   supported_files: string[]

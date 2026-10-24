@@ -38,7 +38,6 @@ IGNORED_DIRECTORIES = frozenset(
 
 
 class ProjectSource(StrEnum):
-    LOCAL = "local"
     UPLOAD = "upload"
 
 
@@ -83,7 +82,6 @@ class ExternalProjectManager:
             else self.engine_root / settings.artifact_dir
         )
         self.upload_root = (artifact_root / "imports").resolve()
-        self.allowed_local_roots = settings.external_project_root_paths
         self.upload_max_bytes = settings.external_upload_max_bytes
         self.extracted_max_bytes = settings.external_extracted_max_bytes
         self.max_files = settings.external_max_files
@@ -123,16 +121,13 @@ class ExternalProjectManager:
             active_runs = self._active_runs.get(project_id, set())
             if active_runs:
                 raise ProjectBusy("project cannot be removed while an experiment is active")
-            workspace_removed = False
-            if project.source == ProjectSource.UPLOAD:
-                workspace = Path(project.root_path).resolve()
-                if workspace.name != project.id:
-                    raise ProjectCleanupError("uploaded workspace identity is invalid")
-                try:
-                    self._remove_owned_workspace(workspace)
-                except OSError as exc:
-                    raise ProjectCleanupError("uploaded workspace cleanup failed") from exc
-                workspace_removed = True
+            workspace = Path(project.root_path).resolve()
+            if workspace.name != project.id:
+                raise ProjectCleanupError("uploaded workspace identity is invalid")
+            try:
+                self._remove_owned_workspace(workspace)
+            except OSError as exc:
+                raise ProjectCleanupError("uploaded workspace cleanup failed") from exc
             self._projects.pop(project_id, None)
             self._active_runs.pop(project_id, None)
             if self._active_project_id == project_id:
@@ -140,26 +135,9 @@ class ExternalProjectManager:
             return {
                 "removed_project_id": project_id,
                 "source": project.source.value,
-                "workspace_removed": workspace_removed,
+                "workspace_removed": True,
                 "active_project": None,
             }
-
-    def connect_local(self, path_value: str, name: str | None = None) -> ExternalProject:
-        requested = Path(path_value)
-        if not requested.is_absolute() or ".." in requested.parts:
-            raise ExternalProjectError("local project path must be absolute and cannot contain '..'")
-        root = requested.resolve()
-        if not root.is_dir():
-            raise ExternalProjectError("authorized local project directory does not exist")
-        if not self.allowed_local_roots:
-            raise ExternalProjectError(
-                "local project access is disabled until RACEPROOF_EXTERNAL_PROJECT_ROOTS is set"
-            )
-        if not any(root == allowed or root.is_relative_to(allowed) for allowed in self.allowed_local_roots):
-            raise ExternalProjectError("local project is outside the configured authorized roots")
-        project = self._inspect(root, ProjectSource.LOCAL, name or root.name)
-        self._activate(project)
-        return project
 
     def import_uploads(
         self, uploads: list[tuple[str, bytes]], name: str | None = None

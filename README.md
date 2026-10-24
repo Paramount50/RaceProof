@@ -100,7 +100,7 @@ RaceProof permits metadata-only tracing. `LANGSMITH_HIDE_INPUTS` and `LANGSMITH_
 
 Built-in examples remain the default. External projects are inspection-only until a complete target adapter, approved invariant, actor inputs, schedule, and separate disposable PostgreSQL experiment database are validated. Static findings are hypotheses and never produce `VERIFIED_CANDIDATE` without the existing execution and verification workflow.
 
-Local folder inspection is disabled by default. Set `RACEPROOF_EXTERNAL_PROJECT_ROOTS` to a list of authorized roots separated by the operating-system path separator, restart FastAPI, then explicitly authorize a contained folder in the dashboard. RaceProof reads supported Python files without importing or executing them. Uploaded Python files and ZIP archives are copied under `artifacts/imports`, bounded by the configured upload, extraction, file-count, and per-source limits, and removed only through the project removal action.
+Uploaded Python files and ZIP archives are copied under `artifacts/imports`, bounded by the configured upload, extraction, file-count, and per-source limits, and inspected without importing or executing them. The workspace is removed only through the project removal action.
 
 If Docker is unavailable on Windows and PostgreSQL 17 is installed:
 
@@ -195,9 +195,8 @@ The dashboard fetches generic target metadata and sends only a selected `target_
 - `GET /api/health`: report service and PostgreSQL status.
 - `GET /api/model-status`: report model IDs, local budgets, fallback state, and only whether a key is configured.
 - `GET /api/projects/active`: return the active imported project or `null`.
-- `POST /api/projects/local`: authorize and inspect a folder contained by a configured local root.
 - `POST /api/projects/upload`: import and inspect bounded `.py` files or a ZIP archive.
-- `DELETE /api/projects/{project_id}`: disconnect a local folder or remove its owned upload workspace.
+- `DELETE /api/projects/{project_id}`: remove an owned upload workspace.
 - `POST /api/runs`: start `{ "target_id": "inventory_oversell" }`.
 - `GET /api/runs/{run_id}`: status, events, and report.
 - `GET /api/runs/{run_id}/events`: Server-Sent Events stream.

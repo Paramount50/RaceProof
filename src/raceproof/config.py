@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -98,7 +97,6 @@ class Settings(BaseSettings):
     benchmark_runs: int = Field(default=20, ge=3, le=200)
     performance_regression_limit: float = Field(default=2.5, ge=1.0, le=10.0)
     artifact_dir: Path = Path("artifacts")
-    external_project_roots: str = ""
     external_upload_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
     external_extracted_max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
     external_max_files: int = Field(default=1000, ge=1, le=10_000)
@@ -166,14 +164,6 @@ class Settings(BaseSettings):
     def langsmith_api_key_value(self) -> str | None:
         value = self.langsmith_api_key.get_secret_value() if self.langsmith_api_key else None
         return None if value in {None, "", "placeholder"} else value
-
-    @property
-    def external_project_root_paths(self) -> list[Path]:
-        return [
-            Path(value.strip()).resolve()
-            for value in self.external_project_roots.split(os.pathsep)
-            if value.strip()
-        ]
 
     @staticmethod
     def _model_list(value: str) -> list[str]:
