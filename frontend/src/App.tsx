@@ -8,13 +8,13 @@ import type { InvariantResult, ModelStatus, RunEvent, RunReport, Target } from '
 import { normalizeUsage } from './usage'
 import { deriveStageStates } from './progress'
 import { describeRepairAttempt } from './repairView'
+import { isTerminalStatus, normalizeStatus, statusLabel, statusTone } from './status'
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const stages = ['load_target', 'inspect', 'investigate', 'execute_experiment', 'observe', 'repair', 'apply_patch', 'verify', 'finalize']
 
-function StatusPill({ status }: { status: string }) {
-  const tone = status.includes('VERIFIED') ? 'good' : status.includes('ERROR') || status === 'UNRESOLVED' ? 'bad' : 'warn'
-  return <span className={`status-pill ${tone}`}><CircleDot size={12} />{status.replaceAll('_', ' ')}</span>
+function StatusPill({ status }: { status: unknown }) {
+  return <span className={`status-pill ${statusTone(status)}`}><CircleDot size={12} />{statusLabel(status)}</span>
 }
 
 function Metric({ label, value, accent = false }: { label: string; value: string | number; accent?: boolean }) {
@@ -56,13 +56,13 @@ function App() {
     source.onmessage = event => {
       const item = JSON.parse(event.data) as RunEvent
       setEvents(previous => previous.some(existing => existing.sequence === item.sequence) ? previous : [...previous, item])
-      if (item.kind === 'stage') setStatus(item.stage.toUpperCase())
+      if (item.kind === 'stage') setStatus(normalizeStatus(item.detail?.status, item.stage.toUpperCase()))
     }
     source.addEventListener('done', async () => {
       source.close()
       const response = await fetch(`${API}/api/runs/${runId}`)
       const data = await response.json()
-      setStatus(data.status); setReport(data.report); setError(data.error)
+      setStatus(normalizeStatus(data.status)); setReport(data.report); setError(data.error)
     })
     source.onerror = () => { source.close(); setError('Event stream disconnected.') }
     return () => source.close()
@@ -87,8 +87,7 @@ function App() {
   const target = targets.find(item => item.id === targetId)
   const actors = target?.actors ?? []
   const evidence = Object.entries(invariant?.evidence ?? {}).slice(0, 3)
-  const terminal = ['READY', 'MODEL_UNAVAILABLE', 'VERIFIED_CANDIDATE', 'UNRESOLVED', 'UNCONFIRMED', 'EXECUTION_ERROR', 'UNVERIFIABLE_SCHEDULE', 'BUDGET_EXCEEDED', 'AUTHENTICATION_ERROR', 'RATE_LIMITED', 'QUOTA_EXCEEDED', 'PROVIDERS_EXHAUSTED', 'MODEL_CONFIGURATION_ERROR']
-  const busy = !terminal.includes(status)
+  const busy = !isTerminalStatus(status)
 
   return <main>
     <header className="topbar">
@@ -213,4 +212,3 @@ function App() {
 }
 
 export default App
-
